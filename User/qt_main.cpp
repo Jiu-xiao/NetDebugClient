@@ -39,9 +39,9 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
 
     // 创建后端对象（确保它们在作用域内）
-    auto backend0 = new TerminalBackend(&engine);
-    auto backend1 = new TerminalBackend(&engine);
-    auto backend2 = new TerminalBackend(&engine);
+    auto backend0 = new LibXR::TerminalBackend(0, &engine);
+    auto backend1 = new LibXR::TerminalBackend(1, &engine);
+    auto backend2 = new LibXR::TerminalBackend(2, &engine);
     qmlRegisterType<DeviceManager>("com.example", 1, 0, "DeviceManager");
 
     // 同时暴露后端对象（可选）
@@ -54,5 +54,9 @@ int main(int argc, char *argv[])
     AppMain app_main;
     app_main.start();
 
-    return app.exec();
+    app.exec();
+
+    app_main.wait();
+
+    return 0;
 }

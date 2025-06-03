@@ -10,31 +10,50 @@
 #include <QStringList>
 #include <QVariant>
 #include <QVariantMap>
+#include <QFile>
+#include <QTextStream>
+#include <QIODevice>
+#include "uart.hpp"
 
-class TerminalBackend : public QObject {
-  Q_OBJECT
-public:
-  explicit TerminalBackend(QObject *parent = nullptr);
+namespace LibXR
+{
 
-public slots:
-  void sendText(const QString &text);
-  Q_INVOKABLE void setBaudrate(const QString &baud);
-  Q_INVOKABLE void setParity(const QString &parity);
-  Q_INVOKABLE void setStopBits(const QString &stopBits);
-  Q_INVOKABLE void setDataBits(const QString &dataBits);
-  Q_INVOKABLE void restartPort();
+  class TerminalBackend : public QObject
+  {
+    Q_OBJECT
+  public:
+    explicit TerminalBackend(uint8_t index, QObject *parent = nullptr);
 
-  Q_INVOKABLE QVariantMap defaultConfig() const;
+  public slots:
+    void sendText(const QString &text);
 
-signals:
-  void receiveText(const QString &text);
+    // UART configuration setters
+    Q_INVOKABLE void setBaudrate(const QString &baud);
+    Q_INVOKABLE void setParity(const QString &parity);
+    Q_INVOKABLE void setStopBits(const QString &stopBits);
+    Q_INVOKABLE void setDataBits(const QString &dataBits);
 
-public:
-  QStringList history_; // 可选：命令历史
-  LibXR::ReadPort read_;
-  LibXR::WritePort write_;
-  LibXR::RamFS ramfs_;
-  LibXR::Terminal<> term_;
-  std::string ansiBuffer_; // 当前未处理完成的 ANSI 控制串
-  bool inEscape_ = false;  // 是否正在处理 \033[
-};
+    // Return current configuration
+    Q_INVOKABLE QVariantMap defaultConfig() const;
+
+  signals:
+    void receiveText(const QString &text);
+
+  public:
+    // Load UART configuration from file
+    void loadConfigFromFile();
+
+    // Save UART configuration to file
+    void saveConfigToFile();
+
+    uint8_t index_;          // Index for the terminal backend
+    LibXR::ReadPort read_;   // Read port for terminal
+    LibXR::WritePort write_; // Write port for terminal
+    LibXR::RamFS ramfs_;     // RAM file system for terminal
+    LibXR::Terminal<> term_; // Terminal instance
+
+    // UART configuration with default values
+    LibXR::UART::Configuration config_ = {460800, UART::Parity::NO_PARITY, 8, 1}; // Default config values
+  };
+
+} // namespace LibXR

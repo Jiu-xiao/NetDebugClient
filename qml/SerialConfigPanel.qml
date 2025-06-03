@@ -153,8 +153,8 @@ Frame {
                     font.pixelSize: 14
                     enabled: index === 0
                     onClicked: {
-                        console.log("[点击重启]", JSON.stringify(config))
-                        userConfigUpdated(config)
+                        console.log("重启MiniPC")
+                        device_manager.RestartMiniPC()
                     }
                 }
             }

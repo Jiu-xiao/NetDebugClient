@@ -1,3 +1,7 @@
 .cache/**
 .history/**
 build/**
+Device.info
+uart_config_0.txt
+uart_config_1.txt
+uart_config_2.txt

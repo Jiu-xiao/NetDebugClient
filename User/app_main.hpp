@@ -1,11 +1,14 @@
 #include <QThread>
 #include <QDebug>
 #include "libxr.hpp"
+#include "TerminalBackend.hpp"
+#include "DeviceManager.hpp"
 
 class AppMain : public QThread
 {
     Q_OBJECT
 
+public:
 protected:
     void run() override
     {
