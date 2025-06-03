@@ -1,16 +1,24 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
-import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
+import QtWebEngine 1.15
+import QtWebChannel 1.1
 
 Item {
     id: root
     width: 800
     height: 600
 
+    // 由外部传入
+    property var backend0
+    property var backend1
+    property var backend2
+    property var channel
+
+    // 当前选中的串口 index
     property int currentIndex: 0
-    property var terminalOutputs: ["", "", ""]
-    property var backends: [backend0, backend1, backend2]
+
+    // 每个串口的配置缓存
     property var configs: [
         { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" },
         { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" },
@@ -24,32 +32,49 @@ Item {
         ListElement { name: "USART2" }
     }
 
+    function getBackend(index) {
+        if (index === 0) return backend0
+        if (index === 1) return backend1
+        if (index === 2) return backend2
+        return null
+    }
+
     function copyConfig(cfg) {
-        return {
-            baudrate: cfg.baudrate,
-            parity: cfg.parity,
-            stopBits: cfg.stopBits,
-            dataBits: cfg.dataBits
+        return cfg ? {
+            baudrate: cfg.baudrate || "115200",
+            parity: cfg.parity || "None",
+            stopBits: cfg.stopBits || "1",
+            dataBits: cfg.dataBits || "8"
+        } : {
+            baudrate: "115200",
+            parity: "None",
+            stopBits: "1",
+            dataBits: "8"
         }
     }
 
     Component.onCompleted: {
-        for (var i = 0; i < backends.length; ++i) {
-            var cfg = backends[i].defaultConfig()
-            if (cfg) configs[i] = copyConfig(cfg)
-        }
-        configPanel.config = copyConfig(configs[currentIndex])
+        Qt.callLater(() => {
+            if (!backend0 || !backend1 || !backend2 || !channel) {
+                console.error("❌ One or more backend/channel objects are null")
+                return
+            }
+
+            console.log("✅ All backends and channel are valid")
+
+            for (var i = 0; i < 3; ++i) {
+                var b = getBackend(i)
+                if (b && b.defaultConfig) {
+                    var cfg = b.defaultConfig()
+                    if (cfg) configs[i] = copyConfig(cfg)
+                }
+            }
+            configPanel.config = copyConfig(configs[currentIndex])
+        })
     }
 
     onCurrentIndexChanged: {
         configPanel.config = copyConfig(configs[currentIndex])
-    }
-
-    Keys.onPressed: function(event) {
-        const backend = backends[currentIndex]
-        if (backend && event.text.length > 0)
-            backend.sendCommand(currentIndex, event.text)
-        event.accepted = true
     }
 
     ColumnLayout {
@@ -57,7 +82,6 @@ Item {
         anchors.margins: 12
         spacing: 10
 
-        // 顶部按钮
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 48
@@ -94,29 +118,32 @@ Item {
             index: currentIndex
             Layout.fillWidth: true
             onUserConfigUpdated: function(newConfig) {
-                configs[currentIndex] = copyConfig(newConfig)
-                var backend = backends[currentIndex]
-                if (backend) {
-                    backend.setBaudrate(newConfig.baudrate)
-                    backend.setParity(newConfig.parity)
-                    backend.setStopBits(newConfig.stopBits)
-                    backend.setDataBits(newConfig.dataBits)
+                if (newConfig) {
+                    configs[currentIndex] = copyConfig(newConfig)
+                    let backend = getBackend(currentIndex)
+                    if (backend) {
+                        if (backend.setBaudrate)
+                            backend.setBaudrate(parseInt(newConfig.baudrate))
+                        if (backend.setParity)
+                            backend.setParity(newConfig.parity)
+                        if (backend.setStopBits)
+                            backend.setStopBits(newConfig.stopBits)
+                        if (backend.setDataBits)
+                            backend.setDataBits(parseInt(newConfig.dataBits))
+                    }
                 }
             }
         }
 
-        TextArea {
-            textFormat: TextEdit.RichText
+        Loader {
+            id: terminalLoader
             Layout.fillWidth: true
             Layout.fillHeight: true
-            readOnly: true
-            wrapMode: TextArea.WrapAnywhere
-            font.family: "monospace"
-            font.pixelSize: 14
-            color: "#dddddd"
-            background: Rectangle { color: "#1e1e1e" }
-            text: terminalOutputs[currentIndex]
-            onTextChanged: cursorPosition = length
+            sourceComponent: {
+                if (currentIndex === 0) return term0
+                if (currentIndex === 1) return term1
+                return term2
+            }
         }
 
         StatusIndicators {
@@ -127,8 +154,62 @@ Item {
         }
     }
 
-    // 后端连接输出
-    Connections { target: backend0; function onOutputReceived(i, o) { if (i === 0) { terminalOutputs[0] += o; if (currentIndex === 0) terminalOutputs = terminalOutputs } } }
-    Connections { target: backend1; function onOutputReceived(i, o) { if (i === 1) { terminalOutputs[1] += o; if (currentIndex === 1) terminalOutputs = terminalOutputs } } }
-    Connections { target: backend2; function onOutputReceived(i, o) { if (i === 2) { terminalOutputs[2] += o; if (currentIndex === 2) terminalOutputs = terminalOutputs } } }
+    // === 各终端视图 ===
+    Component {
+        id: term0
+        WebEngineView {
+            id: view0
+            anchors.fill: parent
+            url: "qrc:/web/index.html?channel=backend0"
+            webChannel: channel
+            settings.localContentCanAccessFileUrls: true
+            settings.localContentCanAccessRemoteUrls: true
+            Component.onCompleted: {
+                if (webChannel && view0.page) {
+                    view0.page.webChannel = webChannel
+                    console.log("✅ WebEngineView 0 loaded")
+                }
+            }
+            onLoadingChanged: function(loadRequest) {
+                console.error("🔍 Status:", loadRequest.status, "URL:", loadRequest.url);
+            }
+
+        }
+    }
+
+    Component {
+        id: term1
+        WebEngineView {
+            id: view1
+            anchors.fill: parent
+            url: "qrc:/web/web/index.html?channel=backend1"
+            webChannel: channel
+            settings.localContentCanAccessFileUrls: true
+            settings.localContentCanAccessRemoteUrls: true
+            Component.onCompleted: {
+                if (webChannel && view1.page) {
+                    view1.page.webChannel = webChannel
+                    console.log("✅ WebEngineView 1 loaded")
+                }
+            }
+        }
+    }
+
+    Component {
+        id: term2
+        WebEngineView {
+            id: view2
+            anchors.fill: parent
+            url: "qrc:/web/web/index.html?channel=backend2"
+            webChannel: channel
+            settings.localContentCanAccessFileUrls: true
+            settings.localContentCanAccessRemoteUrls: true
+            Component.onCompleted: {
+                if (webChannel && view2.page) {
+                    view2.page.webChannel = webChannel
+                    console.log("✅ WebEngineView 2 loaded")
+                }
+            }
+        }
+    }
 }

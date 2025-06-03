@@ -4,11 +4,11 @@
 #include "libxr_type.hpp"
 #include "logger.hpp"
 #include "ramfs.hpp"
-#include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QVariant>
 #include <QVariantMap>
+#include <qcontainerfwd.h>
 #include <qdebug.h>
 #include <qvariant.h>
 
@@ -21,9 +21,8 @@ static ErrorCode Write(WritePort &port) {
   while (port.Size() > 0) {
     port.queue_info_->Pop(info);
     port.queue_data_->PopBatch(buffer, info.data.size_);
-    std::string chunk(reinterpret_cast<char *>(buffer), info.data.size_);
-    QString html = self->appendAnsiText(chunk);
-    emit self->outputReceived(self->terminalIndex_, html);
+    emit self->receiveText(
+        QString::fromUtf8(reinterpret_cast<char *>(buffer), info.data.size_));
     port.Finish(false, ErrorCode::OK, info, 0);
   }
   return ErrorCode::OK;
@@ -43,8 +42,7 @@ TerminalBackend::TerminalBackend(QObject *parent)
   STDIO::write_ = &write_;
 }
 
-void TerminalBackend::sendCommand(int terminalIndex, const QString &command) {
-  terminalIndex_ = terminalIndex;
+void TerminalBackend::sendText(const QString &command) {
   XR_LOG_INFO("Send command: %s", command.toUtf8().data());
   read_.queue_data_->PushBatch(
       reinterpret_cast<const uint8_t *>(command.toUtf8().data()),

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Terminal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- xterm 样式 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1e1e1e;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        #terminal {
+            height: 100%;
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="terminal"></div>
+
+    <!-- Qt WebChannel 脚本 -->
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+    <!-- xterm.js -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.min.js"></script>
+
+    <!-- 桥接逻辑 -->
+    <script>
+        function getChannelName() {
+            const params = new URLSearchParams(window.location.search);
+            console.log("params:", params.get("channel"));
+            return params.get("channel");
+        }
+
+        function setupTerminal(channel) {
+            const channelName = getChannelName();
+            const backend = channel.objects[channelName];
+
+            if (!backend) {
+                console.error("❌ WebChannel object not found:", channelName);
+                console.error("✅ Available objects:", Object.keys(channel.objects));
+                const terminalDiv = document.getElementById("terminal");
+                terminalDiv.innerText = `❌ Backend '${channelName}' not found.\nAvailable: ${Object.keys(channel.objects).join(", ")}`;
+                return;
+            }
+
+            console.log("✅ Connected to backend:", channelName);
+
+            const term = new Terminal({
+                cursorBlink: true,
+                theme: {
+                    background: "#1e1e1e",
+                    foreground: "#d4d4d4"
+                },
+                fontSize: 14,
+                scrollback: 1000
+            });
+
+            term.open(document.getElementById("terminal"));
+
+            // 接收 Qt 端文本
+            if (backend.receiveText && backend.receiveText.connect) {
+                backend.receiveText.connect(function (text) {
+                    term.write(text);
+                });
+            } else {
+                console.warn("⚠️ backend.receiveText is not a signal");
+            }
+
+            // 发送输入到 Qt
+            term.onData(function (data) {
+                if (backend.sendText) {
+                    backend.sendText(data);
+                } else {
+                    console.warn("⚠️ backend.sendText is not available");
+                }
+            });
+
+            term.writeln(`[Connected to ${channelName}]`);
+            if (backend.sendText) {
+                backend.sendText("\r\n[Client connected]\r\n");
+            }
+        }
+
+        function initWebChannel() {
+            if (typeof QWebChannel === 'undefined' || typeof qt === 'undefined' || !qt.webChannelTransport) {
+                console.warn("[Warn] Qt WebChannel transport not ready. Retrying...");
+                setTimeout(initWebChannel, 100);
+                return;
+            }
+
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                console.log("✅ Qt WebChannel initialized");
+                setupTerminal(channel);
+            });
+        }
+
+        window.addEventListener("DOMContentLoaded", () => {
+            initWebChannel();
+        });
+    </script>
+</body>
+
+</html>

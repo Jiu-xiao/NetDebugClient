@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 project(NetDebugClient LANGUAGES CXX)
 
-set(CMAKE_PREFIX_PATH "/opt/Qt/6.9.0/gcc_64") # ✅ 用户指定 Qt 安装路径
+set(CMAKE_PREFIX_PATH "/opt/Qt/6.9.1/gcc_64") # ✅ 用户指定 Qt 安装路径
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 WebView WebChannel Network WebEngineQuick)
 
 qt_add_executable(${PROJECT_NAME}
     main.cpp
@@ -25,7 +25,15 @@ qt_add_qml_module(${PROJECT_NAME}
     qml/StatusIndicators.qml
 )
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+qt6_add_resources(${PROJECT_NAME} "web_resources"
+    PREFIX "/web"
+    BASE web
+    FILES
+    web/index.html
+    web/favicon.ico
+    web/xterm/xterm.js
+    web/xterm/xterm.css
+)
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
@@ -34,6 +42,11 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
+    Qt6::WebView
+    Qt6::WebChannel
+    Qt6::Network
+    Qt6::WebEngineQuick
+    Qt6::WebChannel
 )
 
 add_subdirectory(libxr)
