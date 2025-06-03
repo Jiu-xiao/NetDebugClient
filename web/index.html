@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- xterm 样式 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+    <link rel="stylesheet" href="qrc:/web/xterm/xterm.css" />
 
     <style>
         html,
@@ -31,16 +31,17 @@
     <div id="terminal"></div>
 
     <!-- Qt WebChannel 脚本 -->
-    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="qrc:/qtwebchannel/qwebchannel.js"></script>
 
     <!-- xterm.js -->
-    <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.min.js"></script>
+    <script src="qrc:/web/xterm/xterm.js"></script>
 
-    <!-- 桥接逻辑 -->
+    <!-- xterm.js 插件 -->
+    <script src="qrc:/web/xterm/xterm-addon-fit.min.js"></script>
+
     <script>
         function getChannelName() {
             const params = new URLSearchParams(window.location.search);
-            console.log("params:", params.get("channel"));
             return params.get("channel");
         }
 
@@ -50,7 +51,6 @@
 
             if (!backend) {
                 console.error("❌ WebChannel object not found:", channelName);
-                console.error("✅ Available objects:", Object.keys(channel.objects));
                 const terminalDiv = document.getElementById("terminal");
                 terminalDiv.innerText = `❌ Backend '${channelName}' not found.\nAvailable: ${Object.keys(channel.objects).join(", ")}`;
                 return;
@@ -68,7 +68,16 @@
                 scrollback: 1000
             });
 
+            const fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+
             term.open(document.getElementById("terminal"));
+            fitAddon.fit();
+
+            // 自动适配窗口变化
+            window.addEventListener("resize", () => {
+                fitAddon.fit();
+            });
 
             // 接收 Qt 端文本
             if (backend.receiveText && backend.receiveText.connect) {
@@ -83,19 +92,18 @@
             term.onData(function (data) {
                 if (backend.sendText) {
                     backend.sendText(data);
-                    const hexString = Array.from(data).map(ch => {
-                        return ch.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase();
-                    }).join(' ');
-
+                    const hexString = Array.from(data).map(ch =>
+                        ch.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase()
+                    ).join(' ');
                     console.debug("[Send] JS -> C++ (hex):", hexString);
                 } else {
                     console.warn("⚠️ backend.sendText is not available");
                 }
             });
 
-            term.writeln(`[Connected to ${channelName}]`);
+            term.writeln(`[WebView Engine Initialized]`);
             if (backend.sendText) {
-                backend.sendText("\r\n[Client connected]\r\n");
+                console.info("[Info] Client connected");
             }
         }
 

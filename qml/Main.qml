@@ -13,14 +13,14 @@ ApplicationWindow {
     Material.theme: Material.Dark
     Material.accent: Material.Blue
 
-    InputProcessor {
-        id: inputProcessor
+    DeviceManager {
+        id: device_manager
     }
 
     // 对话框组件，用于接受用户输入
     Dialog {
         id: inputDialog
-        title: "查找设备名称"
+        title: "查找设备名称(留空查找所有设备)"
         visible: true // 默认显示对话框
         modal: true
         anchors.centerIn: parent
@@ -33,7 +33,7 @@ ApplicationWindow {
 
             TextField {
                 id: inputField
-                placeholderText: "留空为不限制设备名称"
+                placeholderText: device_manager.GetLastDeviceName()
                 width: 200
             }
 
@@ -44,7 +44,7 @@ ApplicationWindow {
                     text: "确定"
                     onClicked: {
                         // 调用 C++ 函数处理输入
-                        inputProcessor.processInput(inputField.text)
+                        device_manager.SetDeviceNameFilter(inputField.text)
                         inputDialog.close()  // 关闭对话框
                     }
                 }

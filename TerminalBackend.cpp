@@ -25,6 +25,13 @@ static ErrorCode Write(WritePort &port)
     port.queue_data_->PopBatch(buffer, info.data.size_);
     emit self->receiveText(
         QString::fromUtf8(reinterpret_cast<char *>(buffer), info.data.size_));
+    QString hexString = "";
+
+    for (int i = 0; i < info.data.size_; i++)
+    {
+      hexString += QString("%1 ").arg(buffer[i], 2, 16, QChar('0')).toUpper();
+    }
+
     port.Finish(false, ErrorCode::OK, info, 0);
   }
   return ErrorCode::OK;
@@ -42,8 +49,6 @@ TerminalBackend::TerminalBackend(QObject *parent)
 {
   read_ = Read;
   write_ = Write;
-  STDIO::read_ = &read_;
-  STDIO::write_ = &write_;
 }
 
 void TerminalBackend::sendText(const QString &command)
@@ -56,8 +61,7 @@ void TerminalBackend::sendText(const QString &command)
     hexString += QString("%1 ").arg(b, 2, 16, QChar('0')).toUpper();
   }
 
-  qDebug() << "C++ [Recv] command (hex):" << hexString.trimmed();
-  XR_LOG_INFO("Send command: %s", command.toUtf8().data());
+  XR_LOG_DEBUG("Send command: %s", command.toUtf8().data());
   read_.queue_data_->PushBatch(
       reinterpret_cast<const uint8_t *>(command.toUtf8().data()),
       command.size());
@@ -65,34 +69,41 @@ void TerminalBackend::sendText(const QString &command)
   {
     read_.ProcessPendingReads(false);
     term_.TaskFun(&term_);
+    read_.ProcessPendingReads(false);
+    term_.TaskFun(&term_);
   }
+
+  return;
 }
 
 Q_INVOKABLE void TerminalBackend::setBaudrate(const QString &baud)
 {
-  qInfo() << "Baudrate set to " << baud;
+  XR_LOG_INFO("Baudrate set to %s", baud.toStdString().c_str());
 }
 
 Q_INVOKABLE void TerminalBackend::setParity(const QString &parity)
 {
-  qInfo() << "Parity set to " << parity;
+  XR_LOG_INFO("Parity set to %s", parity.toStdString().c_str());
 }
 
 Q_INVOKABLE void TerminalBackend::setStopBits(const QString &stopBits)
 {
-  qInfo() << "Stop bits set to " << stopBits;
+  XR_LOG_INFO("Stop bits set to %s", stopBits.toStdString().c_str());
 }
 
 Q_INVOKABLE void TerminalBackend::setDataBits(const QString &dataBits)
 {
-  qInfo() << "Data bits set to " << dataBits;
+  XR_LOG_INFO("Data bits set to %s", dataBits.toStdString().c_str());
 }
 
-Q_INVOKABLE void TerminalBackend::restartPort() { qInfo() << "Port restarted"; }
+Q_INVOKABLE void TerminalBackend::restartPort()
+{
+  XR_LOG_INFO("Port restarted");
+}
 
 Q_INVOKABLE QVariantMap TerminalBackend::defaultConfig() const
 {
-  qInfo() << "Load Default config";
+  XR_LOG_INFO("Load Default config");
   return {{"baudrate", "460800"},
           {"parity", "None"},
           {"stopBits", "1"},

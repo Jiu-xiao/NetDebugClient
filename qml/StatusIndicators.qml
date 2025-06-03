@@ -63,6 +63,7 @@ RowLayout {
 
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
+            device_manager.RenameDevice(nameInput.text)
             deviceName = nameInput.text
             console.log("新设备名称:", nameInput.text)
         }
@@ -75,7 +76,7 @@ RowLayout {
             TextField {
                 id: nameInput
                 Layout.fillWidth: true
-                placeholderText: "请输入设备名称"
+                placeholderText: device_manager.GetLastDeviceName()
                 text: deviceName
                 maximumLength: 20
                 selectByMouse: true

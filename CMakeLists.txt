@@ -11,7 +11,8 @@ qt_add_executable(${PROJECT_NAME}
     main.cpp
     TerminalBackend.cpp
     TerminalBackend.hpp
-    InputProcessor.hpp
+    DeviceManager.hpp
+    QTTimebase.hpp
 )
 
 qt_add_qml_module(${PROJECT_NAME}
@@ -34,6 +35,7 @@ qt6_add_resources(${PROJECT_NAME} "web_resources"
     web/favicon.ico
     web/xterm/xterm.js
     web/xterm/xterm.css
+    web/xterm/xterm-addon-fit.min.js
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -49,6 +51,10 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::WebEngineQuick
     Qt6::WebChannel
 )
+
+Set(LIBXR_SYSTEM "None")
+Set(LIBXR_PRINTF_BUFFER_SIZE 4096)
+Set(XR_LOG_MESSAGE_MAX_LEN 256)
 
 add_subdirectory(libxr)
 
