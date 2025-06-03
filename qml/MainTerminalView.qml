@@ -9,16 +9,14 @@ Item {
     width: 800
     height: 600
 
-    // 由外部传入
+    // 外部注入
     property var backend0
     property var backend1
     property var backend2
     property var channel
 
-    // 当前选中的串口 index
     property int currentIndex: 0
 
-    // 每个串口的配置缓存
     property var configs: [
         { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" },
         { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" },
@@ -33,10 +31,7 @@ Item {
     }
 
     function getBackend(index) {
-        if (index === 0) return backend0
-        if (index === 1) return backend1
-        if (index === 2) return backend2
-        return null
+        return index === 0 ? backend0 : index === 1 ? backend1 : backend2
     }
 
     function copyConfig(cfg) {
@@ -59,7 +54,6 @@ Item {
                 console.error("❌ One or more backend/channel objects are null")
                 return
             }
-
             console.log("✅ All backends and channel are valid")
 
             for (var i = 0; i < 3; ++i) {
@@ -135,14 +129,34 @@ Item {
             }
         }
 
-        Loader {
-            id: terminalLoader
+        StackLayout {
+            id: terminalStack
             Layout.fillWidth: true
             Layout.fillHeight: true
-            sourceComponent: {
-                if (currentIndex === 0) return term0
-                if (currentIndex === 1) return term1
-                return term2
+            currentIndex: root.currentIndex
+
+            WebEngineView {
+                url: "qrc:/web/index.html?channel=backend0"
+                webChannel: channel
+                settings.localContentCanAccessFileUrls: true
+                settings.localContentCanAccessRemoteUrls: true
+                Component.onCompleted: console.log("✅ Terminal 0 Ready")
+            }
+
+            WebEngineView {
+                url: "qrc:/web/index.html?channel=backend1"
+                webChannel: channel
+                settings.localContentCanAccessFileUrls: true
+                settings.localContentCanAccessRemoteUrls: true
+                Component.onCompleted: console.log("✅ Terminal 1 Ready")
+            }
+
+            WebEngineView {
+                url: "qrc:/web/index.html?channel=backend2"
+                webChannel: channel
+                settings.localContentCanAccessFileUrls: true
+                settings.localContentCanAccessRemoteUrls: true
+                Component.onCompleted: console.log("✅ Terminal 2 Ready")
             }
         }
 
@@ -151,65 +165,6 @@ Item {
             Layout.preferredHeight: 24
             backendConnected: true
             miniPCOnline: true
-        }
-    }
-
-    // === 各终端视图 ===
-    Component {
-        id: term0
-        WebEngineView {
-            id: view0
-            anchors.fill: parent
-            url: "qrc:/web/index.html?channel=backend0"
-            webChannel: channel
-            settings.localContentCanAccessFileUrls: true
-            settings.localContentCanAccessRemoteUrls: true
-            Component.onCompleted: {
-                if (webChannel && view0.page) {
-                    view0.page.webChannel = webChannel
-                    console.log("✅ WebEngineView 0 loaded")
-                }
-            }
-            onLoadingChanged: function(loadRequest) {
-                console.error("🔍 Status:", loadRequest.status, "URL:", loadRequest.url);
-            }
-
-        }
-    }
-
-    Component {
-        id: term1
-        WebEngineView {
-            id: view1
-            anchors.fill: parent
-            url: "qrc:/web/web/index.html?channel=backend1"
-            webChannel: channel
-            settings.localContentCanAccessFileUrls: true
-            settings.localContentCanAccessRemoteUrls: true
-            Component.onCompleted: {
-                if (webChannel && view1.page) {
-                    view1.page.webChannel = webChannel
-                    console.log("✅ WebEngineView 1 loaded")
-                }
-            }
-        }
-    }
-
-    Component {
-        id: term2
-        WebEngineView {
-            id: view2
-            anchors.fill: parent
-            url: "qrc:/web/web/index.html?channel=backend2"
-            webChannel: channel
-            settings.localContentCanAccessFileUrls: true
-            settings.localContentCanAccessRemoteUrls: true
-            Component.onCompleted: {
-                if (webChannel && view2.page) {
-                    view2.page.webChannel = webChannel
-                    console.log("✅ WebEngineView 2 loaded")
-                }
-            }
         }
     }
 }

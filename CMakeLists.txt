@@ -11,6 +11,7 @@ qt_add_executable(${PROJECT_NAME}
     main.cpp
     TerminalBackend.cpp
     TerminalBackend.hpp
+    InputProcessor.hpp
 )
 
 qt_add_qml_module(${PROJECT_NAME}

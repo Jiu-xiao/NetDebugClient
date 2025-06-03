@@ -14,11 +14,13 @@
 
 using namespace LibXR;
 
-static ErrorCode Write(WritePort &port) {
+static ErrorCode Write(WritePort &port)
+{
   uint8_t buffer[1024];
   WriteInfoBlock info;
   TerminalBackend *self = CONTAINER_OF(&port, TerminalBackend, write_);
-  while (port.Size() > 0) {
+  while (port.Size() > 0)
+  {
     port.queue_info_->Pop(info);
     port.queue_data_->PopBatch(buffer, info.data.size_);
     emit self->receiveText(
@@ -28,49 +30,69 @@ static ErrorCode Write(WritePort &port) {
   return ErrorCode::OK;
 }
 
-static ErrorCode Read(ReadPort &port) {
+static ErrorCode Read(ReadPort &port)
+{
   TerminalBackend *self = CONTAINER_OF(&port, TerminalBackend, read_);
   return ErrorCode::FAILED;
 }
 
 TerminalBackend::TerminalBackend(QObject *parent)
     : QObject(parent), ramfs_("ramfs"),
-      term_(ramfs_, nullptr, &read_, &write_) {
+      term_(ramfs_, nullptr, &read_, &write_)
+{
   read_ = Read;
   write_ = Write;
   STDIO::read_ = &read_;
   STDIO::write_ = &write_;
 }
 
-void TerminalBackend::sendText(const QString &command) {
+void TerminalBackend::sendText(const QString &command)
+{
+  QByteArray bytes = command.toUtf8(); // 转为字节数组
+  QString hexString;
+
+  for (unsigned char b : bytes)
+  {
+    hexString += QString("%1 ").arg(b, 2, 16, QChar('0')).toUpper();
+  }
+
+  qDebug() << "C++ [Recv] command (hex):" << hexString.trimmed();
   XR_LOG_INFO("Send command: %s", command.toUtf8().data());
   read_.queue_data_->PushBatch(
       reinterpret_cast<const uint8_t *>(command.toUtf8().data()),
       command.size());
-  read_.ProcessPendingReads(false);
-  term_.TaskFun(&term_);
+  while (read_.Size() > 0)
+  {
+    read_.ProcessPendingReads(false);
+    term_.TaskFun(&term_);
+  }
 }
 
-Q_INVOKABLE void TerminalBackend::setBaudrate(const QString &baud) {
+Q_INVOKABLE void TerminalBackend::setBaudrate(const QString &baud)
+{
   qInfo() << "Baudrate set to " << baud;
 }
 
-Q_INVOKABLE void TerminalBackend::setParity(const QString &parity) {
+Q_INVOKABLE void TerminalBackend::setParity(const QString &parity)
+{
   qInfo() << "Parity set to " << parity;
 }
 
-Q_INVOKABLE void TerminalBackend::setStopBits(const QString &stopBits) {
+Q_INVOKABLE void TerminalBackend::setStopBits(const QString &stopBits)
+{
   qInfo() << "Stop bits set to " << stopBits;
 }
 
-Q_INVOKABLE void TerminalBackend::setDataBits(const QString &dataBits) {
+Q_INVOKABLE void TerminalBackend::setDataBits(const QString &dataBits)
+{
   qInfo() << "Data bits set to " << dataBits;
 }
 
 Q_INVOKABLE void TerminalBackend::restartPort() { qInfo() << "Port restarted"; }
 
-Q_INVOKABLE QVariantMap TerminalBackend::defaultConfig() const {
-  qInfo() << "Default config";
+Q_INVOKABLE QVariantMap TerminalBackend::defaultConfig() const
+{
+  qInfo() << "Load Default config";
   return {{"baudrate", "460800"},
           {"parity", "None"},
           {"stopBits", "1"},

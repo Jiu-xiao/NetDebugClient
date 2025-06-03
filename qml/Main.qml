@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtWebChannel 1.1
+import com.example 1.0
 
 ApplicationWindow {
     id: root
@@ -12,10 +13,51 @@ ApplicationWindow {
     Material.theme: Material.Dark
     Material.accent: Material.Blue
 
+    InputProcessor {
+        id: inputProcessor
+    }
+
+    // 对话框组件，用于接受用户输入
+    Dialog {
+        id: inputDialog
+        title: "查找设备名称"
+        visible: true // 默认显示对话框
+        modal: true
+        anchors.centerIn: parent
+        height: parent.height
+        width: parent.width
+
+        // 对话框内容
+        Column {
+            anchors.centerIn: parent
+
+            TextField {
+                id: inputField
+                placeholderText: "留空为不限制设备名称"
+                width: 200
+            }
+
+            Row {
+                spacing: 10
+
+                Button {
+                    text: "确定"
+                    onClicked: {
+                        // 调用 C++ 函数处理输入
+                        inputProcessor.processInput(inputField.text)
+                        inputDialog.close()  // 关闭对话框
+                    }
+                }
+            }
+        }
+    }
+
     // 延迟创建 WebChannel（不带 registeredObjects）
     Component {
         id: webChannelComponent
-        WebChannel { }
+        WebChannel {
+            id: channel
+        }
     }
 
     // 延迟创建 MainTerminalView
@@ -39,9 +81,9 @@ ApplicationWindow {
 
     Component.onCompleted: {
         console.log("✅ ApplicationWindow loaded")
-        console.log("🔧 backend0Obj:", backend0Obj)
-        console.log("🔧 backend1Obj:", backend1Obj)
-        console.log("🔧 backend2Obj:", backend2Obj)
+        console.debug("🔧 backend0Obj:", backend0Obj)
+        console.debug("🔧 backend1Obj:", backend1Obj)
+        console.debug("🔧 backend2Obj:", backend2Obj)
 
         if (isValidBackend(backend0Obj) && isValidBackend(backend1Obj) && isValidBackend(backend2Obj)) {
             console.log("✅ All backends are valid")
@@ -55,10 +97,10 @@ ApplicationWindow {
             console.log("✅ WebChannel created")
 
             // 2. 显式赋值 registeredObjects，避免 null 导致 crash
-            qmlWebChannel.registeredObjects["backend0"] = backend0Obj;
-            qmlWebChannel.registeredObjects["backend1"] = backend1Obj;
-            qmlWebChannel.registeredObjects["backend2"] = backend2Obj;
-            console.log("✅ WebChannel registeredObjects assigned")
+            qmlWebChannel.registerObject("backend0" ,backend0Obj);
+            qmlWebChannel.registerObject("backend1" ,backend1Obj);
+            qmlWebChannel.registerObject("backend2" ,backend2Obj);
+            console.log("✅ WebChannel registered objects")
 
             // 3. 创建 MainTerminalView
             terminalView = terminalComponent.createObject(root, {
