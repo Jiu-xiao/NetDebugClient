@@ -6,6 +6,7 @@
 #include "DeviceManager.hpp"
 #include "QTTimebase.hpp"
 #include <qdebug.h>
+#include "app_main.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -49,6 +50,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("backend2Obj", backend2);
 
     engine.loadFromModule("MyApp", "Main");
+
+    AppMain app_main;
+    app_main.start();
 
     return app.exec();
 }
