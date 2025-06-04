@@ -18,6 +18,7 @@ int main(int argc, char *argv[]) {
       port.queue_info_->Pop(info);
       port.queue_data_->PopBatch(write_buff, info.data.size_);
       write_buff[info.data.size_] = '\0';
+      qDebug() << reinterpret_cast<char *>(write_buff);
       port.Finish(false, ErrorCode::FAILED, info, 0);
     }
 
@@ -36,9 +37,6 @@ int main(int argc, char *argv[]) {
   AppMain app_main(&engine);
 
   app.exec();
-
-  app_main.stop();
-  app_main.wait();
 
   return 0;
 }

@@ -56,7 +56,7 @@ target_link_libraries(${PROJECT_NAME}
 Set(LIBXR_SYSTEM "None")
 Set(LIBXR_PRINTF_BUFFER_SIZE 4096)
 Set(XR_LOG_MESSAGE_MAX_LEN 256)
-set(LIBXR_LOG_LEVEL 4)
+set(LIBXR_LOG_LEVEL 3)
 
 add_subdirectory(libxr)
 

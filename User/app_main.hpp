@@ -7,172 +7,101 @@
 #include "libxr_rw.hpp"
 #include <QDebug>
 #include <QHostAddress>
+#include <QQmlApplicationEngine>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
 #include <QTimer>
 #include <QUdpSocket>
-#include <qtypes.h>
 
-class AppMain : public QThread {
+class Worker : public QObject {
   Q_OBJECT
-
 public:
-  enum class Command : uint8_t {
-    PING = 0,
-    REBOOT = 1,
-  };
+  explicit Worker(QQmlApplicationEngine *qmlEngine, QObject *parent = nullptr)
+      : QObject(parent), command_topic_("command", sizeof(Command)),
+        tcpClientConnected_(false) {
+    // 初始化串口后端
+    minipc_ = new LibXR::TerminalBackend("uart_cdc", 0, qmlEngine);
+    usart1_ = new LibXR::TerminalBackend("uart1", 1, qmlEngine);
+    usart2_ = new LibXR::TerminalBackend("uart2", 2, qmlEngine);
 
-  explicit AppMain(QQmlApplicationEngine *parent)
-      : QThread(parent), command_topic_("command", sizeof(Command)),
-        tcpClientConnected_(false), stopRequested_(false) {
-    minipc_ = new LibXR::TerminalBackend("uart_cdc", 0, parent);
-    usart1_ = new LibXR::TerminalBackend("uart1", 1, parent);
-    usart2_ = new LibXR::TerminalBackend("uart2", 2, parent);
-
+    // 注册 QML 类型和主界面
     qmlRegisterType<DeviceManager>("com.example", 1, 0, "DeviceManager");
+    qmlEngine->loadFromModule("MyApp", "Main");
 
-    parent->loadFromModule("MyApp", "Main");
-
-    QObject *rootObject = parent->rootObjects().first();
+    QObject *rootObject = qmlEngine->rootObjects().first();
     deviceManager_ = rootObject->findChild<DeviceManager *>("deviceManager");
 
-    void (*command_cb_fun)(bool, AppMain *, LibXR::RawData &) =
-        [](bool, AppMain *self, LibXR::RawData &data) {
+    // 注册命令回调
+    auto cb = LibXR::Topic::Callback::Create(
+        [](bool, Worker *self, LibXR::RawData &data) {
           if (data.size_ == sizeof(Command)) {
-            Command command = *reinterpret_cast<Command *>(data.addr_);
-            switch (command) {
-            case Command::PING:
+            Command cmd = *reinterpret_cast<Command *>(data.addr_);
+            if (cmd == Command::PING)
               XR_LOG_INFO("Received PING command");
-              break;
-            default:
-              break;
-            }
           }
-        };
+        },
+        this);
+    command_topic_.RegisterCallback(cb);
 
-    auto command_cb = LibXR::Topic::Callback::Create(command_cb_fun, this);
-    command_topic_.RegisterCallback(command_cb);
-
-    // 初始化 TCP 服务器和 UDP 套接字
-    tcpServer_ = new QTcpServer(this);
-    udpSocket_ = new QUdpSocket(this);
+    // 初始化 Topic Server
     topicServer_ = new LibXR::Topic::Server(40960);
     topicServer_->Register(minipc_->topic_);
     topicServer_->Register(usart1_->topic_);
     topicServer_->Register(usart2_->topic_);
     topicServer_->Register(command_topic_);
-    toTcpThread_ = new ToTcpThread(parent, this);
-    start();
   }
 
-  class ToTcpThread : public QThread {
-  public:
-    explicit ToTcpThread(QQmlApplicationEngine *parent, AppMain *main)
-        : QThread(parent), main_(main) {
-      start();
-    }
+  enum class Command : uint8_t { PING = 0, REBOOT = 1 };
 
-    void run() override {
-      LibXR::ReadPort *ports[3] = {&main_->minipc_->read_,
-                                   &main_->usart1_->read_,
-                                   &main_->usart2_->read_};
+public slots:
+  void start() {
+    tcpServer_ = new QTcpServer(this);
+    udpSocket_ = new QUdpSocket(this);
 
-      static uint8_t buffer[40960];
+    // 启动 TCP Server
+    connect(tcpServer_, &QTcpServer::newConnection, this,
+            &Worker::onNewConnection);
 
-      while (true) {
-        if (!main_->tcpClientConnected_) {
-          QThread::msleep(10);
-          continue;
-        }
-
-        for (int i = 0; i < 3; i++) {
-          auto readable = ports[i]->Size();
-          if (readable > 0) {
-            ports[i]->queue_data_->PopBatch(buffer, readable);
-            main_->tcpClientSocket_->write(reinterpret_cast<char *>(buffer),
-                                           static_cast<qint64>(readable));
-            main_->tcpClientSocket_->flush();
-
-            XR_LOG_DEBUG("TCP Server write %d bytes", readable);
-          }
-        }
-
-        QThread::msleep(1);
-      }
-    }
-
-  private:
-    AppMain *main_;
-  };
-
-  ~AppMain() {
-    stop();
-    toTcpThread_->terminate();
-    if (isRunning()) {
-      quit();
-      wait();
-    }
-  }
-
-  void stop() {
-    stopRequested_ = true;
-    quit();
-  }
-
-protected:
-  void run() override {
-    // 启动 TCP 服务器
     if (!tcpServer_->listen(QHostAddress::Any, kTcpPort)) {
       XR_LOG_ERROR("Failed to start TCP server");
       return;
     }
     XR_LOG_DEBUG("TCP Server started on port %d", kTcpPort);
 
-    // 创建定时器用于UDP广播
-    QTimer *broadcastTimer = new QTimer();
-    connect(broadcastTimer, &QTimer::timeout, this, [this]() {
-      if (!tcpClientConnected_) {
+    // UDP 广播定时器
+    broadcastTimer_ = new QTimer(this);
+    connect(broadcastTimer_, &QTimer::timeout, this, [this]() {
+      if (!tcpClientConnected_)
         broadcastUdpMessage();
-      }
     });
-    broadcastTimer->start(1000); // 每秒广播一次
+    broadcastTimer_->start(1000); // 每秒广播一次
 
-    // 监听 TCP 客户端连接
-    connect(tcpServer_, &QTcpServer::newConnection, this,
-            &AppMain::onNewConnection);
-
-    exec(); // 事件循环会处理所有网络事件
-
-    // 清理
-    broadcastTimer->stop();
-    broadcastTimer->deleteLater();
-    tcpServer_->close();
-    XR_LOG_DEBUG("TCP Server stopped");
+    // 串口数据转发定时器（替代跨线程匿名线程）
+    forwardTimer_ = new QTimer(this);
+    connect(forwardTimer_, &QTimer::timeout, this, &Worker::forwardTcpData);
+    forwardTimer_->start(1); // 高频轮询转发
   }
 
 private slots:
   void onNewConnection() {
     if (tcpClientConnected_) {
-      // 如果已有一个客户端连接，则直接关闭新的连接
-      QTcpSocket *newClient = tcpServer_->nextPendingConnection();
+      auto *newClient = tcpServer_->nextPendingConnection();
       newClient->disconnectFromHost();
-      XR_LOG_DEBUG("Rejecting new client connection, already connected");
+      XR_LOG_DEBUG("Rejecting new client connection");
       return;
     }
 
-    // 获取新的客户端连接
     tcpClientSocket_ = tcpServer_->nextPendingConnection();
-    tcpClientConnected_ = true; // 标记已连接
+    tcpClientConnected_ = true;
 
-    // 连接信号与槽
     connect(tcpClientSocket_, &QTcpSocket::readyRead, this,
-            &AppMain::onTcpDataReceived);
+            &Worker::onTcpDataReceived);
     connect(tcpClientSocket_, &QTcpSocket::disconnected, this, [this]() {
       XR_LOG_DEBUG("TCP client disconnected");
       tcpClientConnected_ = false;
       tcpClientSocket_->deleteLater();
-      broadcastUdpMessage(); // 立即广播
+      broadcastUdpMessage();
     });
 
     XR_LOG_DEBUG("New TCP client connected from %s",
@@ -180,57 +109,85 @@ private slots:
   }
 
   void onTcpDataReceived() {
-    QTcpSocket *clientSocket = qobject_cast<QTcpSocket *>(sender());
-    if (clientSocket) {
-      QByteArray data = clientSocket->readAll();
-      XR_LOG_DEBUG("Received data from client. Size:%d", data.size());
-      topicServer_->ParseData({data.data(), static_cast<size_t>(data.size())});
+    QByteArray data = tcpClientSocket_->readAll();
+    topicServer_->ParseData({data.data(), static_cast<size_t>(data.size())});
+    XR_LOG_DEBUG("Received TCP data size: %d", data.size());
+  }
+
+  void forwardTcpData() {
+    if (!tcpClientConnected_) return;
+
+    LibXR::ReadPort *ports[3] = {&minipc_->read_, &usart1_->read_, &usart2_->read_};
+    static uint8_t buffer[40960];
+
+    for (int i = 0; i < 3; ++i) {
+      size_t size = ports[i]->Size();
+      if (size > 0) {
+        ports[i]->queue_data_->PopBatch(buffer, size);
+        tcpClientSocket_->write(reinterpret_cast<char *>(buffer),
+                                static_cast<qint64>(size));
+        tcpClientSocket_->flush();
+        XR_LOG_DEBUG("Forwarded %zu bytes to TCP client", size);
+      }
     }
   }
 
   void broadcastUdpMessage() {
-    // 广播内容
     QByteArray message = kUdpBroadcastMessage;
-
-    // 目标地址和端口
-    QHostAddress broadcastAddress = QHostAddress::Broadcast;
-    quint16 port = kUdpPort;
-
-    // 广播 UDP 消息
-    int bytesSent = udpSocket_->writeDatagram(message, broadcastAddress, port);
-    if (bytesSent == -1) {
-      XR_LOG_ERROR("Failed to send UDP broadcast message");
+    int sent = udpSocket_->writeDatagram(message, QHostAddress::Broadcast,
+                                         kUdpPort);
+    if (sent == -1) {
+      XR_LOG_ERROR("Failed to send UDP broadcast");
     } else {
-      XR_LOG_DEBUG("UDP broadcast message sent");
+      XR_LOG_DEBUG("UDP broadcast sent");
     }
   }
 
 private:
-  LibXR::Topic command_topic_;
-
   DeviceManager *deviceManager_;
   LibXR::TerminalBackend *minipc_;
   LibXR::TerminalBackend *usart1_;
   LibXR::TerminalBackend *usart2_;
   LibXR::Topic::Server *topicServer_;
+  LibXR::Topic command_topic_;
 
-  QTcpServer *tcpServer_; // TCP 服务器
-  QUdpSocket *udpSocket_; // UDP 套接字
-
+  QTcpServer *tcpServer_ = nullptr;
   QTcpSocket *tcpClientSocket_ = nullptr;
+  QUdpSocket *udpSocket_ = nullptr;
 
-  ToTcpThread *toTcpThread_ = nullptr;
+  QTimer *broadcastTimer_ = nullptr;
+  QTimer *forwardTimer_ = nullptr;
 
-  bool tcpClientConnected_; // 标记是否有客户端连接
-  bool stopRequested_;      // 用于请求停止线程
+  bool tcpClientConnected_ = false;
 
-  // 定义常量
-  static constexpr quint16 kTcpPort = 5000; // TCP 端口
-  static constexpr quint16 kUdpPort = 5001; // UDP 端口
-  static constexpr char kTcpResponseMessage[] =
-      "Hello from server"; // TCP 响应消息
+  static constexpr quint16 kTcpPort = 5000;
+  static constexpr quint16 kUdpPort = 5001;
   static constexpr char kUdpBroadcastMessage[] =
-      "Broadcast message to UDP clients"; // UDP 广播消息
+      "Broadcast message to UDP clients";
+};
+
+class AppMain : public QObject {
+  Q_OBJECT
+public:
+  explicit AppMain(QQmlApplicationEngine *qmlEngine, QObject *parent = nullptr)
+      : QObject(parent) {
+    workerThread_ = new QThread(this);
+    worker_ = new Worker(qmlEngine);
+    worker_->moveToThread(workerThread_);
+
+    connect(workerThread_, &QThread::started, worker_, &Worker::start);
+    workerThread_->start();
+  }
+
+  ~AppMain() {
+    workerThread_->quit();
+    workerThread_->wait();
+    delete worker_;
+  }
+
+private:
+  QThread *workerThread_;
+  Worker *worker_;
 };
 
 #endif // APPMAIN_HPP
