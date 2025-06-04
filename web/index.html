@@ -92,10 +92,6 @@
             term.onData(function (data) {
                 if (backend.sendText) {
                     backend.sendText(data);
-                    const hexString = Array.from(data).map(ch =>
-                        ch.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase()
-                    ).join(' ');
-                    console.debug("[Send] JS -> C++ (hex):", hexString);
                 } else {
                     console.warn("⚠️ backend.sendText is not available");
                 }
