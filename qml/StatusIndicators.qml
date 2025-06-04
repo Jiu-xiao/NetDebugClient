@@ -4,8 +4,6 @@ import QtQuick.Layouts 1.15
 import QtQuick.Controls.Material 2.15
 
 RowLayout {
-    property bool backendConnected: true
-    property bool miniPCOnline: true
     property string deviceName: ""  // 当前设备名称
 
     Material.theme: Material.Dark
@@ -21,7 +19,7 @@ RowLayout {
         spacing: 6
         Rectangle {
             width: 12; height: 12; radius: 6
-            color: backendConnected ? "#4caf50" : "#888888"
+            color: device_manager.backendConnected ? "#4caf50" : "#888888"
             border.color: "#333333"
         }
         Label {
@@ -35,7 +33,7 @@ RowLayout {
         spacing: 6
         Rectangle {
             width: 12; height: 12; radius: 6
-            color: miniPCOnline ? "#4caf50" : "#888888"
+            color: device_manager.miniPCOnline ? "#4caf50" : "#888888"
             border.color: "#333333"
         }
         Label {
@@ -50,7 +48,7 @@ RowLayout {
         text: "修改名称"
         onClicked: renameDialog.open()
         Layout.alignment: Qt.AlignLeft
-        enabled: backendConnected
+        enabled: device_manager.backendConnected
     }
 
     // 设备重命名对话框

@@ -163,8 +163,6 @@ Item {
         StatusIndicators {
             Layout.fillWidth: true
             Layout.preferredHeight: 24
-            backendConnected: true
-            miniPCOnline: true
         }
     }
 }

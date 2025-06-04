@@ -14,6 +14,8 @@
 #include <QTimer>
 #include <QUdpSocket>
 
+enum class Command : uint8_t { PING = 0, REMOTE_PING, REBOOT = 1 };
+
 class Worker : public QObject {
   Q_OBJECT
 public:
@@ -30,15 +32,23 @@ public:
     qmlEngine->loadFromModule("MyApp", "Main");
 
     QObject *rootObject = qmlEngine->rootObjects().first();
-    deviceManager_ = rootObject->findChild<DeviceManager *>("deviceManager");
+    deviceManager_ = rootObject->findChild<DeviceManager *>("device_manager");
+
+    ASSERT(deviceManager_ != nullptr);
 
     // 注册命令回调
     auto cb = LibXR::Topic::Callback::Create(
         [](bool, Worker *self, LibXR::RawData &data) {
           if (data.size_ == sizeof(Command)) {
             Command cmd = *reinterpret_cast<Command *>(data.addr_);
-            if (cmd == Command::PING)
+            if (cmd == Command::PING) {
               XR_LOG_INFO("Received PING command");
+              self->last_ping_time_ = QDateTime::currentMSecsSinceEpoch();
+            } else if (cmd == Command::REMOTE_PING) {
+              XR_LOG_INFO("Received REMOTE_PING command");
+              self->last_remote_ping_time_ =
+                  QDateTime::currentMSecsSinceEpoch();
+            }
           }
         },
         this);
@@ -51,8 +61,6 @@ public:
     topicServer_->Register(usart2_->topic_);
     topicServer_->Register(command_topic_);
   }
-
-  enum class Command : uint8_t { PING = 0, REBOOT = 1 };
 
 public slots:
   void start() {
@@ -72,8 +80,9 @@ public slots:
     // UDP 广播定时器
     broadcastTimer_ = new QTimer(this);
     connect(broadcastTimer_, &QTimer::timeout, this, [this]() {
-      if (!tcpClientConnected_)
+      if (!tcpClientConnected_) {
         broadcastUdpMessage();
+      }
     });
     broadcastTimer_->start(1000); // 每秒广播一次
 
@@ -81,6 +90,35 @@ public slots:
     forwardTimer_ = new QTimer(this);
     connect(forwardTimer_, &QTimer::timeout, this, &Worker::forwardTcpData);
     forwardTimer_->start(1); // 高频轮询转发
+
+    // PING 检查定时器
+    pingCheckTimer_ = new QTimer(this);
+    connect(pingCheckTimer_, &QTimer::timeout, this, [this]() {
+      const qint64 now = QDateTime::currentMSecsSinceEpoch();
+      const bool isOnline = (now - last_ping_time_) <= 300;
+
+      if (isOnline == false && tcpClientConnected_) {
+        XR_LOG_INFO("TCP client disconnected");
+        tcpClientConnected_ = false;
+        tcpClientSocket_->disconnectFromHost();
+        broadcastUdpMessage();
+      }
+
+      // 只有状态变化才更新
+      if (deviceManager_->isBackendConnected() != isOnline) {
+        deviceManager_->SetBackendConnected(isOnline);
+        XR_LOG_INFO("Backend status changed: %s",
+                    isOnline ? "online" : "offline");
+      }
+
+      const bool isRemoteOnline = (now - last_remote_ping_time_) <= 300;
+      if (deviceManager_->isMiniPCOnline() != isRemoteOnline) {
+        deviceManager_->SetMiniPCOnline(isRemoteOnline);
+        XR_LOG_INFO("MiniPC status changed: %s",
+                    isRemoteOnline ? "online" : "offline");
+      }
+    });
+    pingCheckTimer_->start(100); // 每 100ms 检查一次
   }
 
 private slots:
@@ -97,12 +135,6 @@ private slots:
 
     connect(tcpClientSocket_, &QTcpSocket::readyRead, this,
             &Worker::onTcpDataReceived);
-    connect(tcpClientSocket_, &QTcpSocket::disconnected, this, [this]() {
-      XR_LOG_DEBUG("TCP client disconnected");
-      tcpClientConnected_ = false;
-      tcpClientSocket_->deleteLater();
-      broadcastUdpMessage();
-    });
 
     XR_LOG_DEBUG("New TCP client connected from %s",
                  tcpClientSocket_->peerAddress().toString().toUtf8().data());
@@ -115,9 +147,11 @@ private slots:
   }
 
   void forwardTcpData() {
-    if (!tcpClientConnected_) return;
+    if (!tcpClientConnected_)
+      return;
 
-    LibXR::ReadPort *ports[3] = {&minipc_->read_, &usart1_->read_, &usart2_->read_};
+    LibXR::ReadPort *ports[3] = {&minipc_->read_, &usart1_->read_,
+                                 &usart2_->read_};
     static uint8_t buffer[40960];
 
     for (int i = 0; i < 3; ++i) {
@@ -134,8 +168,8 @@ private slots:
 
   void broadcastUdpMessage() {
     QByteArray message = kUdpBroadcastMessage;
-    int sent = udpSocket_->writeDatagram(message, QHostAddress::Broadcast,
-                                         kUdpPort);
+    int sent =
+        udpSocket_->writeDatagram(message, QHostAddress::Broadcast, kUdpPort);
     if (sent == -1) {
       XR_LOG_ERROR("Failed to send UDP broadcast");
     } else {
@@ -157,8 +191,12 @@ private:
 
   QTimer *broadcastTimer_ = nullptr;
   QTimer *forwardTimer_ = nullptr;
+  QTimer *pingCheckTimer_ = nullptr;
 
   bool tcpClientConnected_ = false;
+
+  qint64 last_ping_time_ = 0;
+  qint64 last_remote_ping_time_ = 0;
 
   static constexpr quint16 kTcpPort = 5000;
   static constexpr quint16 kUdpPort = 5001;

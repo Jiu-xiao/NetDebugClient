@@ -125,8 +125,8 @@ Q_INVOKABLE QVariantMap TerminalBackend::defaultConfig() const {
 }
 
 void TerminalBackend::loadConfigFromFile() {
-  // Use the index to create the file name (e.g., uart_config_1.txt)
-  QString filename = QString("uart_config_%1.txt").arg(index_);
+  // Use the index to create the file name (e.g., uart_config_1.cfg)
+  QString filename = QString("uart_config_%1.cfg").arg(index_);
   QFile file(filename);
 
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -165,8 +165,8 @@ void TerminalBackend::loadConfigFromFile() {
 }
 
 void TerminalBackend::saveConfigToFile() {
-  // Use the index to create the file name (e.g., uart_config_1.txt)
-  QString filename = QString("uart_config_%1.txt").arg(index_);
+  // Use the index to create the file name (e.g., uart_config_1.cfg)
+  QString filename = QString("uart_config_%1.cfg").arg(index_);
   QFile file(filename);
 
   if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {

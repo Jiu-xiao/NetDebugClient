@@ -15,6 +15,7 @@ ApplicationWindow {
 
     DeviceManager {
         id: device_manager
+        objectName: "device_manager"
     }
 
     // 对话框组件，用于接受用户输入
