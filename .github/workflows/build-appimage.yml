@@ -1,0 +1,53 @@
+name: Build AppImage
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build NetDebugClient AppImage
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🧰 Install dependencies
+        run: |
+          sudo apt update && sudo apt install -y \
+            build-essential cmake git wget curl \
+            libnss3 libasound2t64 libdbus-1-3 libxcomposite1 libxdamage1 \
+            libxrandr2 libxi6 libxkbfile1 libxtst6 \
+            libnss3-dev libasound2-dev libdbus-1-dev libxcomposite-dev \
+            libxdamage-dev libxrandr-dev libxi-dev libxkbfile-dev \
+            libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-keysyms1 libxcb-image0 libxcb-icccm4 \
+            libxcb-randr0 libxcb-xinerama0 libxcb-xfixes0 libxcb-render-util0 \
+            libx11-xcb1 libxcb-shape0 libodbc2 libpq5 libmysqlclient21 \
+            python3-pip pipx
+
+      - name: 💡 Set up pipx and aqtinstall
+        run: |
+          pipx install aqtinstall
+          pipx ensurepath
+
+      - name: 🧱 Install Qt 6.9.1 using aqt
+        run: |
+          echo "Installing Qt..."
+          aqt install-qt linux desktop 6.9.1 linux_gcc_64 --modules all --outputdir /opt/Qt
+        env:
+          AQT_CACHE: ${{ runner.tool_cache }}/aqt
+
+      - name: 🏗 Build AppImage
+        run: |
+          ./pack_appimage.sh
+
+      - name: 📦 Upload AppImage artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: NetDebugClient-AppImage
+          path: NetDebugClient-*.AppImage
