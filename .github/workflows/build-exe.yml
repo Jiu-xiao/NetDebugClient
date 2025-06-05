@@ -5,8 +5,15 @@ on:
     branches:
       - master
       - main
-  workflow_dispatch:
+    paths:
+      - '.github/workflows/build-exe.yml'
+      - 'qml/**'
+      - 'User/**'
+      - 'web/**'
+      - 'CMakeLists.txt'
+
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,9 +32,8 @@ jobs:
       run: pip install aqtinstall
 
     - name: Install Qt 6.9.1 (MSVC 2022 x64)
-      run: |
-        aqt install-qt windows desktop 6.9.1 win64_msvc2022_64 \
-          --outputdir C:\Qt --modules qtbase,qtdeclarative,qtquickcontrols2
+      run: cmd /c "aqt install-qt windows desktop 6.9.1 win64_msvc2022_64 --outputdir C:\Qt --modules qtbase,qtdeclarative,qtquickcontrols2"
+
 
     - name: Configure CMake project
       run: >

@@ -5,8 +5,15 @@ on:
     branches:
       - master
       - main
-  workflow_dispatch:
+    paths:
+      - '.github/workflows/build-appimage.yml'
+      - 'qml/**'
+      - 'User/**'
+      - 'web/**'
+      - 'CMakeLists.txt'
+
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
