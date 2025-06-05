@@ -34,6 +34,9 @@ jobs:
     - name: Install Qt 6.9.1 (MSVC 2022 x64)
       run: cmd /c "aqt install-qt windows desktop 6.9.1 win64_msvc2022_64 --modules all --outputdir C:/Qt"
 
+    - name: 📦 Get LibXR
+      run: |
+        git clone https://github.com/Jiu-xiao/libxr.git
 
     - name: Configure CMake project
       run: >
