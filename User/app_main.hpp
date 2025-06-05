@@ -14,14 +14,14 @@
 #include <QTimer>
 #include <QUdpSocket>
 
-enum class Command : uint8_t { PING = 0, REMOTE_PING, REBOOT = 1 };
-
-class Worker : public QObject {
+class Worker : public QObject
+{
   Q_OBJECT
 public:
   explicit Worker(QQmlApplicationEngine *qmlEngine, QObject *parent = nullptr)
       : QObject(parent), command_topic_("command", sizeof(Command)),
-        tcpClientConnected_(false) {
+        tcpClientConnected_(false)
+  {
     // 初始化串口后端
     minipc_ = new LibXR::TerminalBackend("uart_cdc", 0, qmlEngine);
     usart1_ = new LibXR::TerminalBackend("uart1", 1, qmlEngine);
@@ -38,14 +38,19 @@ public:
 
     // 注册命令回调
     auto cb = LibXR::Topic::Callback::Create(
-        [](bool, Worker *self, LibXR::RawData &data) {
-          if (data.size_ == sizeof(Command)) {
+        [](bool, Worker *self, LibXR::RawData &data)
+        {
+          if (data.size_ <= sizeof(Command))
+          {
             Command cmd = *reinterpret_cast<Command *>(data.addr_);
-            if (cmd == Command::PING) {
-              XR_LOG_INFO("Received PING command");
+            if (cmd.type == Command::Type::PING)
+            {
+              XR_LOG_DEBUG("Received PING command");
               self->last_ping_time_ = QDateTime::currentMSecsSinceEpoch();
-            } else if (cmd == Command::REMOTE_PING) {
-              XR_LOG_INFO("Received REMOTE_PING command");
+            }
+            else if (cmd.type == Command::Type::REMOTE_PING)
+            {
+              XR_LOG_DEBUG("Received REMOTE_PING command");
               self->last_remote_ping_time_ =
                   QDateTime::currentMSecsSinceEpoch();
             }
@@ -63,7 +68,8 @@ public:
   }
 
 public slots:
-  void start() {
+  void start()
+  {
     tcpServer_ = new QTcpServer(this);
     udpSocket_ = new QUdpSocket(this);
 
@@ -71,7 +77,8 @@ public slots:
     connect(tcpServer_, &QTcpServer::newConnection, this,
             &Worker::onNewConnection);
 
-    if (!tcpServer_->listen(QHostAddress::Any, kTcpPort)) {
+    if (!tcpServer_->listen(QHostAddress::Any, kTcpPort))
+    {
       XR_LOG_ERROR("Failed to start TCP server");
       return;
     }
@@ -79,11 +86,15 @@ public slots:
 
     // UDP 广播定时器
     broadcastTimer_ = new QTimer(this);
-    connect(broadcastTimer_, &QTimer::timeout, this, [this]() {
+    connect(broadcastTimer_, &QTimer::timeout, this, [this]()
+            {
       if (!tcpClientConnected_) {
-        broadcastUdpMessage();
-      }
-    });
+        if (deviceManager_->filter_is_set_) {
+          broadcastUdpMessage();
+        } else {
+          XR_LOG_INFO("Device name filter is not set, skipping broadcast");
+        }
+      } });
     broadcastTimer_->start(1000); // 每秒广播一次
 
     // 串口数据转发定时器（替代跨线程匿名线程）
@@ -93,7 +104,8 @@ public slots:
 
     // PING 检查定时器
     pingCheckTimer_ = new QTimer(this);
-    connect(pingCheckTimer_, &QTimer::timeout, this, [this]() {
+    connect(pingCheckTimer_, &QTimer::timeout, this, [this]()
+            {
       const qint64 now = QDateTime::currentMSecsSinceEpoch();
       const bool isOnline = (now - last_ping_time_) <= 300;
 
@@ -117,13 +129,39 @@ public slots:
         XR_LOG_INFO("MiniPC status changed: %s",
                     isRemoteOnline ? "online" : "offline");
       }
-    });
+
+      if (deviceManager_->require_restart_) {
+        LibXR::Topic::PackedData<Command::Type> command;
+        LibXR::Topic::PackData(command_topic_.GetKey(), command,
+                               Command::Type::REBOOT);
+        uint8_t buf[sizeof(command) + LibXR::Topic::PACK_BASE_SIZE];
+        LibXR::Topic::PackData(minipc_->topic_.GetKey(), buf, command);
+        tcpClientSocket_->write(reinterpret_cast<char *>(buf),
+                                static_cast<qint64>(sizeof(buf)));
+        deviceManager_->require_restart_ = false;
+      }
+
+      if (deviceManager_->require_rename_) {
+        deviceManager_->require_rename_ = false;
+        LibXR::Topic::PackedData<Command> command_buf;
+        Command cmd;
+        cmd.type = Command::Type::RENAME;
+        strncpy(cmd.data.device_name,
+                deviceManager_->last_device_name_.toUtf8().data(),
+                sizeof(cmd.data.device_name));
+        LibXR::Topic::PackData(command_topic_.GetKey(), command_buf, cmd);
+        tcpClientSocket_->write(reinterpret_cast<char *>(&command_buf),
+                                static_cast<qint64>(sizeof(command_buf)));
+        XR_LOG_ERROR("Rename");
+      } });
     pingCheckTimer_->start(100); // 每 100ms 检查一次
   }
 
 private slots:
-  void onNewConnection() {
-    if (tcpClientConnected_) {
+  void onNewConnection()
+  {
+    if (tcpClientConnected_)
+    {
       auto *newClient = tcpServer_->nextPendingConnection();
       newClient->disconnectFromHost();
       XR_LOG_DEBUG("Rejecting new client connection");
@@ -138,15 +176,20 @@ private slots:
 
     XR_LOG_DEBUG("New TCP client connected from %s",
                  tcpClientSocket_->peerAddress().toString().toUtf8().data());
+    minipc_->syncConfig();
+    usart1_->syncConfig();
+    usart2_->syncConfig();
   }
 
-  void onTcpDataReceived() {
+  void onTcpDataReceived()
+  {
     QByteArray data = tcpClientSocket_->readAll();
     topicServer_->ParseData({data.data(), static_cast<size_t>(data.size())});
     XR_LOG_DEBUG("Received TCP data size: %d", data.size());
   }
 
-  void forwardTcpData() {
+  void forwardTcpData()
+  {
     if (!tcpClientConnected_)
       return;
 
@@ -154,9 +197,11 @@ private slots:
                                  &usart2_->read_};
     static uint8_t buffer[40960];
 
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 3; ++i)
+    {
       size_t size = ports[i]->Size();
-      if (size > 0) {
+      if (size > 0)
+      {
         ports[i]->queue_data_->PopBatch(buffer, size);
         tcpClientSocket_->write(reinterpret_cast<char *>(buffer),
                                 static_cast<qint64>(size));
@@ -166,13 +211,27 @@ private slots:
     }
   }
 
-  void broadcastUdpMessage() {
-    QByteArray message = kUdpBroadcastMessage;
+  void broadcastUdpMessage()
+  {
+    QString filter = "";
+    if (deviceManager_->filter_name_.size() > 0)
+    {
+      filter = kUdpBroadcastMessageFiltered + deviceManager_->filter_name_;
+    }
+    else
+    {
+      filter = kUdpBroadcastMessageDefault;
+    }
+
+    QByteArray message = filter.toUtf8();
     int sent =
         udpSocket_->writeDatagram(message, QHostAddress::Broadcast, kUdpPort);
-    if (sent == -1) {
+    if (sent == -1)
+    {
       XR_LOG_ERROR("Failed to send UDP broadcast");
-    } else {
+    }
+    else
+    {
       XR_LOG_DEBUG("UDP broadcast sent");
     }
   }
@@ -200,15 +259,19 @@ private:
 
   static constexpr quint16 kTcpPort = 5000;
   static constexpr quint16 kUdpPort = 5001;
-  static constexpr char kUdpBroadcastMessage[] =
-      "Broadcast message to UDP clients";
+  static constexpr char kUdpBroadcastMessageDefault[] =
+      "XRobot Debug Tools Default Message";
+  static constexpr char kUdpBroadcastMessageFiltered[] =
+      "XRobot Debug Tools Message Filtered:";
 };
 
-class AppMain : public QObject {
+class AppMain : public QObject
+{
   Q_OBJECT
 public:
   explicit AppMain(QQmlApplicationEngine *qmlEngine, QObject *parent = nullptr)
-      : QObject(parent) {
+      : QObject(parent)
+  {
     workerThread_ = new QThread(this);
     worker_ = new Worker(qmlEngine);
     worker_->moveToThread(workerThread_);
@@ -217,8 +280,9 @@ public:
     workerThread_->start();
   }
 
-  ~AppMain() {
-    workerThread_->quit();
+  ~AppMain()
+  {
+    workerThread_->terminate();
     workerThread_->wait();
     delete worker_;
   }

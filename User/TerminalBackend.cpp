@@ -165,6 +165,8 @@ void TerminalBackend::loadConfigFromFile() {
 }
 
 void TerminalBackend::saveConfigToFile() {
+  syncConfig();
+
   // Use the index to create the file name (e.g., uart_config_1.cfg)
   QString filename = QString("uart_config_%1.cfg").arg(index_);
   QFile file(filename);
@@ -190,4 +192,18 @@ void TerminalBackend::saveConfigToFile() {
               config_.stop_bits, config_.data_bits);
 
   file.close();
+}
+
+void TerminalBackend::syncConfig() {
+  static uint32_t topic_key = LibXR::Topic::Find("command")->key;
+  Command cmd;
+  cmd.type = Command::Type::CONFIG_UART;
+  cmd.data.uart_config.uart_index = index_;
+  cmd.data.uart_config.config = config_;
+  LibXR::Topic::PackedData<Command> packed_cmd;
+  LibXR::Topic::PackData(topic_key, packed_cmd, cmd);
+  if (read_.EmptySize() < sizeof(packed_cmd)) {
+    read_.Reset();
+  }
+  read_.queue_data_->PushBatch(&packed_cmd, sizeof(packed_cmd));
 }

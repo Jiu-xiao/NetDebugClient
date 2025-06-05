@@ -15,6 +15,26 @@
 #include <QVariant>
 #include <QVariantMap>
 
+class Command {
+public:
+  enum class Type : uint8_t {
+    PING = 0,
+    REMOTE_PING = 1,
+    REBOOT = 2,
+    RENAME = 3,
+    CONFIG_UART = 4,
+  };
+
+  Type type;
+  union {
+    char device_name[32];
+    struct {
+      uint8_t uart_index;
+      LibXR::UART::Configuration config;
+    } uart_config;
+  } data;
+};
+
 namespace LibXR {
 
 class TerminalBackend : public QObject {
@@ -44,6 +64,8 @@ public:
 
   // Save UART configuration to file
   void saveConfigToFile();
+
+  void syncConfig();
 
   const char *name_;
   uint8_t index_;          // Index for the terminal backend
