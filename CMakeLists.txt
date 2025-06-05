@@ -5,7 +5,8 @@ project(NetDebugClient LANGUAGES CXX)
 if(CMAKE_HOST_SYSTEM_NAME MATCHES "Linux")
     set(CMAKE_PREFIX_PATH "/opt/Qt/6.9.1/gcc_64")
 elseif(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
-    # set(CMAKE_PREFIX_PATH "C:/Qt/6.9.1/mingw_64")
+    set(CMAKE_PREFIX_PATH "C:/Qt/6.9.1/msvc2022_64")
+    add_compile_options(/W0)
 elseif()
     # message(FATAL_ERROR "Unkonw system.")
 endif()
@@ -64,7 +65,7 @@ target_link_libraries(${PROJECT_NAME}
 Set(LIBXR_SYSTEM "None")
 Set(LIBXR_PRINTF_BUFFER_SIZE 4096)
 Set(XR_LOG_MESSAGE_MAX_LEN 256)
-set(LIBXR_LOG_LEVEL 3)
+set(LIBXR_LOG_LEVEL 4)
 
 add_subdirectory(libxr)
 
