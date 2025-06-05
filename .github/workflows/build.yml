@@ -1,0 +1,172 @@
+name: Build and Release NetDebugClient
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - '.github/workflows/*.yml'
+      - 'qml/**'
+      - 'User/**'
+      - 'web/**'
+      - 'CMakeLists.txt'
+
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: 🐧 Build AppImage (Linux)
+    runs-on: ubuntu-latest
+
+    container:
+      image: ubuntu:20.04
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: 🧰 Install Python
+        run: |
+          apt update
+          apt install -y python3.9 python3.9-venv python3.9-distutils curl
+          update-alternatives --install /usr/bin/python python /usr/bin/python3.9 1
+          curl -sS https://bootstrap.pypa.io/get-pip.py | python
+
+      - name: 🧰 Install dependencies
+        run: |
+          apt install -y \
+            build-essential cmake git wget curl \
+            libnss3 libasound2 libdbus-1-3 libxcomposite1 libxdamage1 \
+            libxrandr2 libxi6 libxkbfile1 libxtst6 \
+            libnss3-dev libasound2-dev libdbus-1-dev libxcomposite-dev \
+            libxdamage-dev libxrandr-dev libxi-dev libxkbfile-dev \
+            libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-keysyms1 libxcb-image0 libxcb-icccm4 \
+            libxcb-randr0 libxcb-xinerama0 libxcb-xfixes0 libxcb-render-util0 \
+            libx11-xcb1 libxcb-shape0 libodbc1 libpq5 libmysqlclient21 \
+            pipx sudo libfontconfig-dev libfreetype6-dev
+
+      - name: 💡 Set up pipx and aqtinstall
+        run: |
+          git clone https://github.com/miurahr/aqtinstall && cd aqtinstall \
+          && git checkout b22c86daef2ceeab6635ee0851e089f7346ec286 && pip3.9 install .
+
+      - name: 📦 Get LibXR
+        run: git clone https://github.com/Jiu-xiao/libxr.git
+
+      - name: 🧱 Install Qt 6.9.1
+        run: |
+          aqt install-qt linux desktop 6.9.1 linux_gcc_64 --modules all --outputdir /opt/Qt
+
+      - name: 🔧 Build Project
+        run: |
+          mkdir build && cd build
+          cmake .. -DQT_FORCE_MIN_CMAKE_VERSION_FOR_USING_QT=3.16
+          make -j$(nproc)
+
+      - name: 📦 Pack AppImage
+        run: |
+          chmod +x ./pack_appimage.sh
+          ./pack_appimage.sh
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetDebugClient-Linux
+          path: NetDebugClient*.AppImage
+
+  build-windows:
+    name: 🪟 Build EXE (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: 🧰 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: 💡 Install aqtinstall
+        run: pip install aqtinstall
+
+      - name: 🧱 Install Qt 6.9.1
+        run: cmd /c "aqt install-qt windows desktop 6.9.1 win64_msvc2022_64 --modules all --outputdir C:/Qt"
+
+      - name: 📦 Get LibXR
+        run: git clone https://github.com/Jiu-xiao/libxr.git
+
+      - name: 🔧 Configure CMake
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=C:/Qt/6.9.1/msvc2022_64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: 🏗️ Build Project
+        run: cmake --build build --config Release
+
+      - name: 🧳 windeployqt
+        working-directory: build/Release
+        run: |
+          C:/Qt/6.9.1/msvc2022_64/bin/windeployqt.exe NetDebugClient.exe --qmldir ../../qml
+
+      - name: 📦 Package
+        run: cmd /c "pack_win_exe.cmd"
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetDebugClient-Windows
+          path: build/dist/
+
+  release:
+    name: 🚀 Create GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: ⏱️ Generate version name
+        run: echo "release_name=$(date +v%Y.%m.%d.vv%H.%M)" >> $GITHUB_ENV
+
+      - name: 📥 Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: NetDebugClient-Linux
+          path: linux/
+
+      - name: 📥 Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: NetDebugClient-Windows
+          path: windows/
+
+      - name: 📝 Create Release
+        uses: actions/create-release@v1
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.release_name }}
+          release_name: Release ${{ env.release_name }}
+          draft: false
+          prerelease: false
+
+      - name: 🚚 Upload AppImage
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: linux/NetDebugClient*.AppImage
+          asset_name: NetDebugClient-Linux-x86_64.AppImage
+          asset_content_type: application/octet-stream
+
+      - name: 🚚 Upload Windows Files
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: windows/NetDebugClient.exe
+          asset_name: NetDebugClient-Windows.exe
+          asset_content_type: application/vnd.microsoft.portable-executable
