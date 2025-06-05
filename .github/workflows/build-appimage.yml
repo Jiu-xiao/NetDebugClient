@@ -10,44 +10,64 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    name: Build NetDebugClient AppImage
+
+    container:
+      image: ubuntu:20.04
+      options: --privileged
 
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v3
 
+      - name: 🧰 Install Python
+        run: |
+          apt update
+          apt install -y python3.9 python3.9-venv python3.9-distutils curl
+          update-alternatives --install /usr/bin/python python /usr/bin/python3.9 1
+          curl -sS https://bootstrap.pypa.io/get-pip.py | python
+
       - name: 🧰 Install dependencies
         run: |
-          sudo apt update && sudo apt install -y \
+          apt install -y \
             build-essential cmake git wget curl \
-            libnss3 libasound2t64 libdbus-1-3 libxcomposite1 libxdamage1 \
+            libnss3 libasound2 libdbus-1-3 libxcomposite1 libxdamage1 \
             libxrandr2 libxi6 libxkbfile1 libxtst6 \
             libnss3-dev libasound2-dev libdbus-1-dev libxcomposite-dev \
             libxdamage-dev libxrandr-dev libxi-dev libxkbfile-dev \
             libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-keysyms1 libxcb-image0 libxcb-icccm4 \
             libxcb-randr0 libxcb-xinerama0 libxcb-xfixes0 libxcb-render-util0 \
-            libx11-xcb1 libxcb-shape0 libodbc2 libpq5 libmysqlclient21 \
-            python3-pip pipx
+            libx11-xcb1 libxcb-shape0 libodbc1 libpq5 libmysqlclient21 \
+            pipx sudo libfontconfig-dev libfreetype6-dev
 
       - name: 💡 Set up pipx and aqtinstall
         run: |
-          pipx install aqtinstall
-          pipx ensurepath
+          git clone https://github.com/miurahr/aqtinstall && cd aqtinstall \
+          && git checkout b22c86daef2ceeab6635ee0851e089f7346ec286 && pip3.9 install .
+
+      - name: 📦 Get LibXR
+        run: |
+          git clone https://github.com/Jiu-xiao/libxr.git
 
       - name: 🧱 Install Qt 6.9.1 using aqt
         run: |
-          echo "Installing Qt..."
           aqt install-qt linux desktop 6.9.1 linux_gcc_64 --modules all --outputdir /opt/Qt
-        env:
-          AQT_CACHE: ${{ runner.tool_cache }}/aqt
 
-      - name: 🏗 Build AppImage
+      - name: 🔧 Configure and build project
         run: |
+          mkdir build
+          cd build
+          cmake .. -DQT_FORCE_MIN_CMAKE_VERSION_FOR_USING_QT=3.16
+          make -j$(nproc)
+
+      - name: 📦 Pack AppImage
+        run: |
+          chmod +x ./pack_appimage.sh
           ./pack_appimage.sh
 
-      - name: 📦 Upload AppImage artifact
-        uses: actions/upload-artifact@v3
+      - name: 📤 Upload AppImage
+        uses: actions/upload-artifact@v4
         with:
           name: NetDebugClient-AppImage
-          path: NetDebugClient-*.AppImage
+          path: |
+            NetDebugClient*.AppImage
