@@ -1,7 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
 project(NetDebugClient LANGUAGES CXX)
 
-set(CMAKE_PREFIX_PATH "/opt/Qt/6.9.1/gcc_64") # ✅ 用户指定 Qt 安装路径
+
+if(CMAKE_HOST_SYSTEM_NAME MATCHES "Linux")
+    set(CMAKE_PREFIX_PATH "/opt/Qt/6.9.1/gcc_64")
+elseif(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
+    # set(CMAKE_PREFIX_PATH "C:/Qt/6.9.1/mingw_64")
+elseif()
+    # message(FATAL_ERROR "Unkonw system.")
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
 
