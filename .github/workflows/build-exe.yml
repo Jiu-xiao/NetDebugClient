@@ -49,8 +49,11 @@ jobs:
       run: |
         C:/Qt/6.9.1/msvc2022_64/bin/windeployqt.exe NetDebugClient.exe --qmldir ../../qml
 
+    - name: Clean and package dist
+      run: cmd /c "pack_win_exe.cmd"
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: NetDebugClient-Windows
-        path: build/Release/**
+        path: build/dist/
