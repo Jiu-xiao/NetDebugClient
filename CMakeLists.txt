@@ -62,6 +62,14 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::WebChannel
 )
 
+if(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/build/MyApp
+                ${CMAKE_CURRENT_SOURCE_DIR}/build/Release/MyApp
+    )
+endif()
+
 Set(LIBXR_SYSTEM "None")
 Set(LIBXR_PRINTF_BUFFER_SIZE 4096)
 Set(XR_LOG_MESSAGE_MAX_LEN 256)

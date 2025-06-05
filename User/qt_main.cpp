@@ -48,10 +48,7 @@ int main(int argc, char *argv[])
   QQmlApplicationEngine engine;
 
   // 关键：添加打包后的路径
-  engine.addImportPath(QCoreApplication::applicationDirPath() + "/..");
   engine.addImportPath(QCoreApplication::applicationDirPath() + "/../qml");
-  engine.addImportPath(QCoreApplication::applicationDirPath() + "/../lib/qml");   // 可选
-  engine.addImportPath(QCoreApplication::applicationDirPath() + "/../share/qml"); // 可选
 
   printQmlImportPaths(&engine);
 
