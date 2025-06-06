@@ -9,7 +9,6 @@ Item {
     width: 800
     height: 600
 
-    // 外部注入
     property var backend0
     property var backend1
     property var backend2
@@ -51,10 +50,10 @@ Item {
     Component.onCompleted: {
         Qt.callLater(() => {
             if (!backend0 || !backend1 || !backend2 || !channel) {
-                console.error("❌ One or more backend/channel objects are null")
+                console.error("One or more backend/channel objects are null")
                 return
             }
-            console.log("✅ All backends and channel are valid")
+            console.log("All backends and channel are valid")
 
             for (var i = 0; i < 3; ++i) {
                 var b = getBackend(i)
@@ -69,6 +68,23 @@ Item {
 
     onCurrentIndexChanged: {
         configPanel.config = copyConfig(configs[currentIndex])
+    }
+
+    Connections {
+        target: clipboardBridge
+        onClipboardTextReady: function(text) {
+            console.log("QML Receive Clipboard:", text);
+            let escaped = text.replace(/\\/g, "\\\\")
+                            .replace(/`/g, "\\`")
+                            .replace(/\$/g, "\\$");
+
+            const currentWebView = terminalStack.itemAt(root.currentIndex);
+            if (currentWebView) {
+                currentWebView.runJavaScript(`window.pasteFromClipboard(${JSON.stringify(text)});`)
+            } else {
+                console.error("Cannot find current WebView");
+            }
+        }
     }
 
     ColumnLayout {
@@ -136,27 +152,63 @@ Item {
             currentIndex: root.currentIndex
 
             WebEngineView {
+                id: webview1
                 url: "qrc:/web/index.html?channel=backend0"
                 webChannel: channel
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: true
-                Component.onCompleted: console.log("✅ Terminal 0 Ready")
+                Component.onCompleted: console.log("Terminal 0 Ready")
+                onContextMenuRequested: function(request) {
+                    console.error("Context menu triggered with:", request.selectedText);
+                    request.accepted = true;
+                    const selected = request.selectedText;
+                    if (selected && selected.length > 0) {
+                        webview1.runJavaScript(`doCopy(${JSON.stringify(request.selectedText)});`);
+                    } else {
+                        forceActiveFocus(); 
+                        clipboardBridge.requestClipboardText(); 
+                    }
+                }
             }
 
             WebEngineView {
+                id: webview2
                 url: "qrc:/web/index.html?channel=backend1"
                 webChannel: channel
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: true
-                Component.onCompleted: console.log("✅ Terminal 1 Ready")
+                Component.onCompleted: console.log("Terminal 1 Ready")
+                onContextMenuRequested: function(request) {
+                    console.error("Context menu triggered with:", request.selectedText);
+                    request.accepted = true;
+                    const selected = request.selectedText;
+                    if (selected && selected.length > 0) {
+                        webview2.runJavaScript(`doCopy(${JSON.stringify(request.selectedText)});`);
+                    } else {
+                        forceActiveFocus(); 
+                        clipboardBridge.requestClipboardText(); 
+                    }
+                }
             }
 
             WebEngineView {
+                id: webview3
                 url: "qrc:/web/index.html?channel=backend2"
                 webChannel: channel
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: true
-                Component.onCompleted: console.log("✅ Terminal 2 Ready")
+                Component.onCompleted: console.log("Terminal 2 Ready")
+                onContextMenuRequested: function(request) {
+                    console.error("Context menu triggered with:", request.selectedText);
+                    request.accepted = true;
+                    const selected = request.selectedText;
+                    if (selected && selected.length > 0) {
+                        webview3.runJavaScript(`doCopy(${JSON.stringify(request.selectedText)});`);
+                    } else {
+                        forceActiveFocus(); 
+                        clipboardBridge.requestClipboardText(); 
+                    }
+                }
             }
         }
 

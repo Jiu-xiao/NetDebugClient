@@ -1,5 +1,4 @@
-#ifndef DeviceManager_H
-#define DeviceManager_H
+#pragma once
 
 #include "logger.hpp"
 #include <QDebug>
@@ -112,5 +111,3 @@ private:
     }
   }
 };
-
-#endif // DeviceManager_H

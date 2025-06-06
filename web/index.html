@@ -40,6 +40,8 @@
     <script src="qrc:/web/xterm/xterm-addon-fit.min.js"></script>
 
     <script>
+        var term = null;
+
         function getChannelName() {
             const params = new URLSearchParams(window.location.search);
             return params.get("channel");
@@ -47,7 +49,8 @@
 
         function setupTerminal(channel) {
             const channelName = getChannelName();
-            const backend = channel.objects[channelName];
+            window.backend = channel.objects[channelName];
+            const backend = window.backend;
 
             if (!backend) {
                 console.error("❌ WebChannel object not found:", channelName);
@@ -58,7 +61,7 @@
 
             console.log("✅ Connected to backend:", channelName);
 
-            const term = new Terminal({
+            term = new Terminal({
                 cursorBlink: true,
                 theme: {
                     background: "#1e1e1e",
@@ -119,6 +122,63 @@
         window.addEventListener("DOMContentLoaded", () => {
             initWebChannel();
         });
+
+        window.copyText = function (text) {
+            if (!window.term) {
+                console.error("❌ Term not ready");
+                return;
+            } else {
+                console.error("✅ Copied to QML:", text);
+            }
+            navigator.clipboard.writeText(text).then(() => {
+                console.error("✅ Copied from QML:", text);
+            }).catch(err => {
+                console.error("❌ Copy failed:", err);
+            });
+        }
+
+        window.pasteFromClipboard = function (text) {
+            if (!window.term) {
+                console.error("❌ term 未就绪");
+                return;
+            }
+
+            if (typeof text !== "string" || text.length === 0) {
+                console.error("❌ 粘贴内容为空或无效");
+                return;
+            }
+
+            console.log("📋 QML 传入的剪贴板内容 =", text);
+
+            // 发送给后端
+            if (window.backend && typeof window.backend.sendText === "function") {
+                window.backend.sendText(text);
+                console.log("📤 已发送到 Qt 后端");
+            } else {
+                console.warn("⚠️ backend.sendText 未绑定");
+            }
+        };
+
+
+        window.doCopy = function (text) {
+            try {
+                // 仅用于调试
+                console.error("Trying copy:", text);
+                // 创建一个临时 textarea
+                const textarea = document.createElement("textarea");
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+
+                const success = document.execCommand("copy");
+                console.error("execCommand copy success:", success);
+                document.body.removeChild(textarea);
+            } catch (e) {
+                console.error("Legacy copy failed:", e);
+            }
+        };
+
+
     </script>
 </body>
 

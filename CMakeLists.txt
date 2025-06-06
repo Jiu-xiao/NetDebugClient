@@ -17,13 +17,14 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 WebView WebChannel Network WebEngineQuick)
 
 if(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
-    qt_add_executable(${PROJECT_NAME} WIN32
+    qt_add_executable(${PROJECT_NAME}
         User/qt_main.cpp
         User/app_main.hpp
         User/TerminalBackend.cpp
         User/TerminalBackend.hpp
         User/DeviceManager.hpp
         User/QTTimebase.hpp
+        User/ClipboardBridge.hpp
     )
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
