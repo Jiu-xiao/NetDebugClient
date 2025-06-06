@@ -11,7 +11,6 @@ on:
       - 'User/**'
       - 'web/**'
       - 'CMakeLists.txt'
-
   pull_request:
   workflow_dispatch:
 
@@ -138,7 +137,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: NetDebugClient-Windows
-          path: windows/
+          path: windows/NetDebugClient-Windows
+
+      - name: 📦 Zip Windows Package
+        run: |
+          cd windows
+          zip -r NetDebugClient-Windows.zip NetDebugClient-Windows
 
       - name: 🔍 Find AppImage
         id: find_appimage
@@ -146,13 +150,6 @@ jobs:
           file=$(find linux -name '*.AppImage' | head -n 1)
           echo "appimage_path=$file" >> $GITHUB_OUTPUT
           echo "appimage_name=$(basename "$file")" >> $GITHUB_OUTPUT
-
-      - name: 🔍 Find Windows EXE
-        id: find_exe
-        run: |
-          file=$(find windows -name '*.exe' | head -n 1)
-          echo "exe_path=$file" >> $GITHUB_OUTPUT
-          echo "exe_name=$(basename "$file")" >> $GITHUB_OUTPUT
 
       - name: 📝 Create Release
         uses: actions/create-release@v1
@@ -175,12 +172,12 @@ jobs:
           asset_name: ${{ steps.find_appimage.outputs.appimage_name }}
           asset_content_type: application/octet-stream
 
-      - name: 🚚 Upload Windows EXE
+      - name: 🚚 Upload Windows ZIP
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.find_exe.outputs.exe_path }}
-          asset_name: ${{ steps.find_exe.outputs.exe_name }}
-          asset_content_type: application/vnd.microsoft.portable-executable
+          asset_path: windows/NetDebugClient-Windows.zip
+          asset_name: NetDebugClient-Windows.zip
+          asset_content_type: application/zip
