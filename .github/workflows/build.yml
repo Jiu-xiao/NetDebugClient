@@ -121,7 +121,7 @@ jobs:
     name: 🚀 Create GitHub Release
     needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: ⏱️ Generate version name
