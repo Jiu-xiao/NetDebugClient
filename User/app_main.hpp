@@ -5,6 +5,7 @@
 #include "TerminalBackend.hpp"
 #include "libxr.hpp"
 #include "libxr_rw.hpp"
+
 #include <QDebug>
 #include <QHostAddress>
 #include <QQmlApplicationEngine>
@@ -14,51 +15,78 @@
 #include <QTimer>
 #include <QUdpSocket>
 
-
 class Worker : public QObject {
   Q_OBJECT
 public:
   explicit Worker(QQmlApplicationEngine *qmlEngine, QObject *parent = nullptr)
-      : QObject(parent), command_topic_("command", sizeof(Command)),
-        tcpClientConnected_(false) {
-    /* 初始化串口后端 */
-    minipc_ = new LibXR::TerminalBackend("uart_cdc", 0, qmlEngine);
-    usart1_ = new LibXR::TerminalBackend("uart1", 1, qmlEngine);
-    usart2_ = new LibXR::TerminalBackend("uart2", 2, qmlEngine);
+      : QObject(parent), qmlEngine_(qmlEngine),
+        command_topic_("command", sizeof(Command)), tcpClientConnected_(false) {
+    initBackends();
+    initClipboard();
+    initQmlUI();
+    initCommandHandler();
+    initTopicServer();
+  }
 
-    /* 初始化剪切板 */
+public slots:
+  void start() {
+    initTcpServer();
+    initTimers();
+  }
+
+private:
+  void initBackends() {
+    /* 创建三个串口后端实例，分别对应 MiniPC、USART1、USART2 */
+    minipc_ = new TerminalBackend("uart_cdc", 0, qmlEngine_);
+    usart1_ = new TerminalBackend("uart1", 1, qmlEngine_);
+    usart2_ = new TerminalBackend("uart2", 2, qmlEngine_);
+  }
+
+  void initClipboard() {
+    /* 创建剪贴板桥接，并注入到 QML 上下文中 */
     clipboardBridge_ = new ClipboardBridge();
-    qmlEngine->rootContext()->setContextProperty("clipboardBridge",
-                                                 clipboardBridge_);
+    qmlEngine_->rootContext()->setContextProperty("clipboardBridge",
+                                                  clipboardBridge_);
+  }
 
-    /* 注册 QML 类型和主界面 */
+  void initQmlUI() {
+    /* 注册 DeviceManager 类型并加载主界面 */
     qmlRegisterType<DeviceManager>("com.example", 1, 0, "DeviceManager");
-    qmlEngine->loadFromModule("MyApp", "Main");
+    qmlEngine_->loadFromModule("MyApp", "Main");
 
-    QObject *rootObject = qmlEngine->rootObjects().first();
+    /* 获取 QML 中的 DeviceManager 对象 */
+    QObject *rootObject = qmlEngine_->rootObjects().first();
     deviceManager_ = rootObject->findChild<DeviceManager *>("device_manager");
-
     ASSERT(deviceManager_ != nullptr);
+  }
 
-    /* 注册命令回调 */
+  void initCommandHandler() {
+    /* 注册处理 PING 和 REMOTE_PING 的命令回调 */
     auto cb = LibXR::Topic::Callback::Create(
         [](bool, Worker *self, LibXR::RawData &data) {
           if (data.size_ <= sizeof(Command)) {
             Command cmd = *reinterpret_cast<Command *>(data.addr_);
-            if (cmd.type == Command::Type::PING) {
+            switch (cmd.type) {
+            case Command::Type::PING:
               XR_LOG_DEBUG("Received PING command");
               self->last_ping_time_ = QDateTime::currentMSecsSinceEpoch();
-            } else if (cmd.type == Command::Type::REMOTE_PING) {
+              break;
+            case Command::Type::REMOTE_PING:
               XR_LOG_DEBUG("Received REMOTE_PING command");
               self->last_remote_ping_time_ =
                   QDateTime::currentMSecsSinceEpoch();
+              break;
+            default:
+              break;
             }
           }
         },
         this);
     command_topic_.RegisterCallback(cb);
+  }
 
-    /* 初始化 Topic Server */
+  void initTopicServer() {
+    /* 创建 Topic Server 并注册四个 Topic */
     topicServer_ = new LibXR::Topic::Server(40960);
     topicServer_->Register(minipc_->topic_);
     topicServer_->Register(usart1_->topic_);
@@ -66,22 +94,28 @@ public:
     topicServer_->Register(command_topic_);
   }
 
-public slots:
-  void start() {
+  void initTcpServer() {
+    /* 启动 TCP 服务器，监听端口 */
     tcpServer_ = new QTcpServer(this);
     udpSocket_ = new QUdpSocket(this);
 
-    /* 启动 TCP Server */
     connect(tcpServer_, &QTcpServer::newConnection, this,
             &Worker::onNewConnection);
-
     if (!tcpServer_->listen(QHostAddress::Any, kTcpPort)) {
       XR_LOG_ERROR("Failed to start TCP server");
       return;
     }
     XR_LOG_DEBUG("TCP Server started on port %d", kTcpPort);
+  }
 
-    /* UDP 广播定时器 */
+  void initTimers() {
+    /*
+     * 定时广播设备标识（通过 UDP）：
+     *  - 仅在没有 TCP 客户端连接时执行；
+     *  - 若设置了设备名过滤器，则广播带过滤名的消息；
+     *  - 否则广播默认消息；
+     *  - 周期为 1000 毫秒。
+     */
     broadcastTimer_ = new QTimer(this);
     connect(broadcastTimer_, &QTimer::timeout, this, [this]() {
       if (!tcpClientConnected_) {
@@ -94,30 +128,44 @@ public slots:
     });
     broadcastTimer_->start(1000);
 
-    /* 串口数据转发定时器 */
+    /*
+     * 串口数据转发到 TCP 客户端：
+     *  - 每 1 毫秒检查串口缓冲区是否有数据；
+     *  - 若有，则读取并通过 TCP 发送；
+     *  - 用于将串口实时数据透传到远程客户端。
+     */
     forwardTimer_ = new QTimer(this);
     connect(forwardTimer_, &QTimer::timeout, this, &Worker::forwardTcpData);
     forwardTimer_->start(1);
 
-    /* PING 检查定时器 */
+    /*
+     * 定期检测本地和远程 PING 状态：
+     *  - 周期为 100 毫秒；
+     *  - 若本地 PING 超时则断开客户端连接并广播；
+     *  - 若状态变化，更新 UI 状态（Backend/MiniPC Online）；
+     *  - 若有重启/重命名请求，则向 minipc 发送命令。
+     */
     pingCheckTimer_ = new QTimer(this);
     connect(pingCheckTimer_, &QTimer::timeout, this, [this]() {
       const qint64 now = QDateTime::currentMSecsSinceEpoch();
       const bool isOnline = (now - last_ping_time_) <= 300;
 
-      if (isOnline == false && tcpClientConnected_) {
+      /* 本地 PING 超时处理 */
+      if (!isOnline && tcpClientConnected_) {
         XR_LOG_INFO("TCP client disconnected");
         tcpClientConnected_ = false;
         tcpClientSocket_->disconnectFromHost();
         broadcastUdpMessage();
       }
 
+      /* 更新本地后端在线状态 */
       if (deviceManager_->isBackendConnected() != isOnline) {
         deviceManager_->SetBackendConnected(isOnline);
         XR_LOG_INFO("Backend status changed: %s",
                     isOnline ? "online" : "offline");
       }
 
+      /* 更新 MiniPC 在线状态 */
       const bool isRemoteOnline = (now - last_remote_ping_time_) <= 300;
       if (deviceManager_->isMiniPCOnline() != isRemoteOnline) {
         deviceManager_->SetMiniPCOnline(isRemoteOnline);
@@ -125,17 +173,18 @@ public slots:
                     isRemoteOnline ? "online" : "offline");
       }
 
+      /* 如果 UI 请求设备重启，发送 REBOOT 命令 */
       if (deviceManager_->require_restart_) {
         LibXR::Topic::PackedData<Command::Type> command;
         LibXR::Topic::PackData(command_topic_.GetKey(), command,
                                Command::Type::REBOOT);
         uint8_t buf[sizeof(command) + LibXR::Topic::PACK_BASE_SIZE];
         LibXR::Topic::PackData(minipc_->topic_.GetKey(), buf, command);
-        tcpClientSocket_->write(reinterpret_cast<char *>(buf),
-                                static_cast<qint64>(sizeof(buf)));
+        tcpClientSocket_->write(reinterpret_cast<char *>(buf), sizeof(buf));
         deviceManager_->require_restart_ = false;
       }
 
+      /* 如果 UI 请求设备改名，发送 RENAME 命令 */
       if (deviceManager_->require_rename_) {
         deviceManager_->require_rename_ = false;
         LibXR::Topic::PackedData<Command> command_buf;
@@ -146,7 +195,7 @@ public slots:
                 sizeof(cmd.data.device_name));
         LibXR::Topic::PackData(command_topic_.GetKey(), command_buf, cmd);
         tcpClientSocket_->write(reinterpret_cast<char *>(&command_buf),
-                                static_cast<qint64>(sizeof(command_buf)));
+                                sizeof(command_buf));
         XR_LOG_ERROR("Rename");
       }
     });
@@ -155,8 +204,14 @@ public slots:
 
 private slots:
   void onNewConnection() {
+    /*
+     * 处理新的 TCP 客户端连接：
+     *  - 如果已有客户端连接，则拒绝新连接；
+     *  - 否则接收连接并绑定读取信号；
+     *  - 连接成功后，同步三个串口配置。
+     */
     if (tcpClientConnected_) {
-      auto *newClient = tcpServer_->nextPendingConnection();
+      QTcpSocket *newClient = tcpServer_->nextPendingConnection();
       newClient->disconnectFromHost();
       XR_LOG_DEBUG("Rejecting new client connection");
       return;
@@ -170,18 +225,31 @@ private slots:
 
     XR_LOG_DEBUG("New TCP client connected from %s",
                  tcpClientSocket_->peerAddress().toString().toUtf8().data());
+
+    /* 同步串口配置到客户端 */
     minipc_->syncConfig();
     usart1_->syncConfig();
     usart2_->syncConfig();
   }
 
   void onTcpDataReceived() {
+    /*
+     * 读取 TCP 客户端发送的数据：
+     *  - 读取全部数据并解析为 Topic 消息；
+     *  - Topic 协议用于多通道数据接收与命令分发。
+     */
     QByteArray data = tcpClientSocket_->readAll();
     topicServer_->ParseData({data.data(), static_cast<size_t>(data.size())});
     XR_LOG_DEBUG("Received TCP data size: %d", data.size());
   }
 
   void forwardTcpData() {
+    /*
+     * 从所有串口中读取待转发数据：
+     *  - 每次扫描所有串口（MiniPC / USART1 / USART2）；
+     *  - 若有新数据，则从队列中读取并转发到 TCP 客户端；
+     *  - 此函数由定时器定期触发，确保数据低延迟转发。
+     */
     if (!tcpClientConnected_)
       return;
 
@@ -202,16 +270,22 @@ private slots:
   }
 
   void broadcastUdpMessage() {
-    QString filter = "";
-    if (deviceManager_->filter_name_.size() > 0) {
-      filter = kUdpBroadcastMessageFiltered + deviceManager_->filter_name_;
-    } else {
-      filter = kUdpBroadcastMessageDefault;
-    }
+    /*
+     * 通过 UDP 广播设备识别信息：
+     *  - 如果已设置设备名过滤器，则使用带设备名的消息；
+     *  - 否则使用默认广播消息；
+     *  - 用于局域网内设备自动发现；
+     *  - 实际广播地址为 255.255.255.255:kUdpPort。
+     */
+    QString filter =
+        deviceManager_->filter_name_.isEmpty()
+            ? kUdpBroadcastMessageDefault
+            : kUdpBroadcastMessageFiltered + deviceManager_->filter_name_;
 
     QByteArray message = filter.toUtf8();
     int sent =
         udpSocket_->writeDatagram(message, QHostAddress::Broadcast, kUdpPort);
+
     if (sent == -1) {
       XR_LOG_ERROR("Failed to send UDP broadcast");
     } else {
@@ -220,27 +294,33 @@ private slots:
   }
 
 private:
+  QQmlApplicationEngine *qmlEngine_;
+
+  /* 系统组件 */
   DeviceManager *deviceManager_;
-  LibXR::TerminalBackend *minipc_;
-  LibXR::TerminalBackend *usart1_;
-  LibXR::TerminalBackend *usart2_;
+  TerminalBackend *minipc_;
+  TerminalBackend *usart1_;
+  TerminalBackend *usart2_;
   ClipboardBridge *clipboardBridge_;
   LibXR::Topic::Server *topicServer_;
   LibXR::Topic command_topic_;
 
+  /* 网络通信 */
   QTcpServer *tcpServer_ = nullptr;
   QTcpSocket *tcpClientSocket_ = nullptr;
   QUdpSocket *udpSocket_ = nullptr;
 
+  /* 定时器 */
   QTimer *broadcastTimer_ = nullptr;
   QTimer *forwardTimer_ = nullptr;
   QTimer *pingCheckTimer_ = nullptr;
 
+  /* 状态变量 */
   bool tcpClientConnected_ = false;
-
   qint64 last_ping_time_ = 0;
   qint64 last_remote_ping_time_ = 0;
 
+  /* 常量定义 */
   static constexpr quint16 kTcpPort = 5000;
   static constexpr quint16 kUdpPort = 5001;
   static constexpr char kUdpBroadcastMessageDefault[] =

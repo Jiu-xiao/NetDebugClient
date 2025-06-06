@@ -4,7 +4,8 @@ import QtQuick.Layouts 1.15
 import QtQuick.Controls.Material 2.15
 
 RowLayout {
-    property string deviceName: ""  // 当前设备名称
+    // 当前设备名称（用于展示与重命名）
+    property string deviceName: ""
 
     Material.theme: Material.Dark
     Material.accent: Material.Teal
@@ -14,7 +15,7 @@ RowLayout {
     Layout.alignment: Qt.AlignLeft
     Layout.margins: 6
 
-    // 状态指示灯区域
+    // 指示灯：后端连接状态
     RowLayout {
         spacing: 6
         Rectangle {
@@ -29,6 +30,7 @@ RowLayout {
         }
     }
 
+    // 指示灯：MiniPC 在线状态
     RowLayout {
         spacing: 6
         Rectangle {
@@ -43,30 +45,32 @@ RowLayout {
         }
     }
 
-    // 改名按钮 - 触发弹窗
+    // 重命名按钮：打开对话框
     Button {
         text: "修改名称"
+        enabled: device_manager.backendConnected
         onClicked: renameDialog.open()
         Layout.alignment: Qt.AlignLeft
-        enabled: device_manager.backendConnected
     }
 
-    // 设备重命名对话框
+    // 弹出对话框：重命名设备
     Dialog {
         id: renameDialog
         title: "修改设备名称"
-        anchors.centerIn: parent.parent
-        width: 300
         modal: true
+        width: 300
+        anchors.centerIn: parent.parent
 
         standardButtons: Dialog.Ok | Dialog.Cancel
+
+        // 接受时发送重命名请求
         onAccepted: {
             device_manager.RenameDevice(nameInput.text)
             deviceName = nameInput.text
             console.log("新设备名称:", nameInput.text)
         }
 
-        // 自定义内容区域
+        // 内容区域：输入 + 计数
         contentItem: ColumnLayout {
             spacing: 16
             width: parent.width
@@ -79,13 +83,11 @@ RowLayout {
                 maximumLength: 20
                 selectByMouse: true
 
-                // 回车键提交
                 Keys.onReturnPressed: renameDialog.accept()
-                // ESC键关闭
                 Keys.onEscapePressed: renameDialog.reject()
             }
 
-            // 字符计数显示
+            // 实时字符数显示
             Label {
                 Layout.alignment: Qt.AlignRight
                 text: nameInput.length + "/" + nameInput.maximumLength
@@ -94,12 +96,16 @@ RowLayout {
             }
         }
 
-        // 禁用确认按钮当名称为空
+        // 对话框打开时自动聚焦并全选
         onOpened: {
             nameInput.forceActiveFocus()
             nameInput.selectAll()
         }
+
+        // 关闭时恢复内容
         onClosed: nameInput.text = deviceName
+
+        // 禁用确认按钮当输入为空
         Component.onCompleted: {
             standardButton(Dialog.Ok).enabled = Qt.binding(() => nameInput.text.trim() !== "")
         }

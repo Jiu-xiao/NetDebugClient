@@ -10,25 +10,26 @@ ApplicationWindow {
     width: 800
     height: 600
     title: "XRobot Net Debug Tools"
+
     Material.theme: Material.Dark
     Material.accent: Material.Blue
 
+    /* 后端设备管理对象（绑定至 C++） */
     DeviceManager {
         id: device_manager
         objectName: "device_manager"
     }
 
-    // 对话框组件，用于接受用户输入
+    /* 对话框：开机时提示用户输入设备名 */
     Dialog {
         id: inputDialog
         title: "查找设备名称(留空查找所有设备)"
-        visible: true // 默认显示对话框
+        visible: true
         modal: true
         anchors.centerIn: parent
         height: parent.height
         width: parent.width
 
-        // 对话框内容
         Column {
             anchors.centerIn: parent
 
@@ -44,16 +45,15 @@ ApplicationWindow {
                 Button {
                     text: "确定"
                     onClicked: {
-                        // 调用 C++ 函数处理输入
                         device_manager.SetDeviceNameFilter(inputField.text)
-                        inputDialog.close()  // 关闭对话框
+                        inputDialog.close()
                     }
                 }
             }
         }
     }
 
-    // 延迟创建 WebChannel（不带 registeredObjects）
+    /* 延迟构造 WebChannel（用于 JS/C++ 通信） */
     Component {
         id: webChannelComponent
         WebChannel {
@@ -61,7 +61,7 @@ ApplicationWindow {
         }
     }
 
-    // 延迟创建 MainTerminalView
+    /* 延迟构造主终端界面视图 */
     Component {
         id: terminalComponent
         MainTerminalView {
@@ -73,50 +73,55 @@ ApplicationWindow {
         }
     }
 
+    /* 属性变量：WebChannel 实例与终端视图引用 */
     property var qmlWebChannel: null
     property var terminalView: null
 
+    /* 工具函数：验证 backend 是否可用 */
     function isValidBackend(obj) {
         return obj !== null && typeof obj === "object";
     }
 
+    /* 初始化回调：检查并创建 WebChannel 和终端视图 */
     Component.onCompleted: {
-        console.log("✅ ApplicationWindow loaded")
-        console.debug("🔧 backend0Obj:", backend0Obj)
-        console.debug("🔧 backend1Obj:", backend1Obj)
-        console.debug("🔧 backend2Obj:", backend2Obj)
+        console.log("ApplicationWindow loaded")
+        console.debug("backend0Obj:", backend0Obj)
+        console.debug("backend1Obj:", backend1Obj)
+        console.debug("backend2Obj:", backend2Obj)
 
-        if (isValidBackend(backend0Obj) && isValidBackend(backend1Obj) && isValidBackend(backend2Obj)) {
-            console.log("✅ All backends are valid")
+        if (isValidBackend(backend0Obj) &&
+            isValidBackend(backend1Obj) &&
+            isValidBackend(backend2Obj)) {
 
-            // 1. 创建 WebChannel
+            console.log("All backends are valid")
+
             qmlWebChannel = webChannelComponent.createObject(root)
             if (!qmlWebChannel) {
-                console.error("❌ Failed to create WebChannel")
+                console.error("Failed to create WebChannel")
                 return
             }
-            console.log("✅ WebChannel created")
+            console.log("WebChannel created")
 
-            // 2. 显式赋值 registeredObjects，避免 null 导致 crash
-            qmlWebChannel.registerObject("backend0" ,backend0Obj);
-            qmlWebChannel.registerObject("backend1" ,backend1Obj);
-            qmlWebChannel.registerObject("backend2" ,backend2Obj);
-            console.log("✅ WebChannel registered objects")
+            qmlWebChannel.registerObject("backend0", backend0Obj)
+            qmlWebChannel.registerObject("backend1", backend1Obj)
+            qmlWebChannel.registerObject("backend2", backend2Obj)
+            console.log("WebChannel registered objects")
 
-            // 3. 创建 MainTerminalView
             terminalView = terminalComponent.createObject(root, {
                 backend0: backend0Obj,
                 backend1: backend1Obj,
                 backend2: backend2Obj,
                 channel: qmlWebChannel
             })
+
             if (!terminalView) {
-                console.error("❌ Failed to create MainTerminalView")
+                console.error("Failed to create MainTerminalView")
             } else {
-                console.log("✅ MainTerminalView created")
+                console.log("MainTerminalView created")
             }
+
         } else {
-            console.error("❌ One or more backends are null or invalid")
+            console.error("One or more backends are null or invalid")
         }
     }
 }

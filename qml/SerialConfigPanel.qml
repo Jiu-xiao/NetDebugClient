@@ -11,8 +11,10 @@ Frame {
     Material.theme: Material.Dark
     Material.accent: Material.Teal
 
+    // 当前终端索引（0 = MiniPC，禁用配置）
     property int index: 0
 
+    // 当前配置项（由外部传入并绑定）
     property var config: {
         "baudrate": "115200",
         "parity": "None",
@@ -20,6 +22,7 @@ Frame {
         "dataBits": "8"
     }
 
+    // 配置更改信号，供外部同步更新
     signal userConfigUpdated(var config)
 
     padding: 12
@@ -28,6 +31,7 @@ Frame {
         radius: 8
     }
 
+    // 更新配置项字段值（避免重复触发）
     function updateConfigField(field, value) {
         if (config && config[field] !== value) {
             config[field] = value
@@ -35,6 +39,7 @@ Frame {
         }
     }
 
+    // 当配置变更时更新各 ComboBox 的选项索引
     onConfigChanged: {
         if (!config || typeof config !== "object") return
         baudrateBox.currentIndex = baudrateBox.model.indexOf(config.baudrate)
@@ -47,7 +52,8 @@ Frame {
         spacing: 16
         Layout.fillWidth: true
         width: parent.width
-        // Baudrate
+
+        // Baudrate 配置
         Item {
             width: 120; height: 40
             opacity: index !== 0 ? 1.0 : 0.4
@@ -69,7 +75,7 @@ Frame {
             }
         }
 
-        // Parity
+        // Parity 校验位
         Item {
             width: 100; height: 40
             opacity: index !== 0 ? 1.0 : 0.4
@@ -91,7 +97,7 @@ Frame {
             }
         }
 
-        // StopBits
+        // StopBits 停止位
         Item {
             width: 70; height: 40
             opacity: index !== 0 ? 1.0 : 0.4
@@ -113,7 +119,7 @@ Frame {
             }
         }
 
-        // DataBits
+        // DataBits 数据位
         Item {
             width: 70; height: 40
             opacity: index !== 0 ? 1.0 : 0.4
@@ -135,7 +141,7 @@ Frame {
             }
         }
 
-        // Restart 按钮
+        // MiniPC 专用：重启按钮
         Item {
             width: 90; height: 40
             opacity: index === 0 ? 1.0 : 0.4

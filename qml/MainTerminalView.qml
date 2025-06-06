@@ -9,19 +9,23 @@ Item {
     width: 800
     height: 600
 
+    /* 串口后端对象和 WebChannel 绑定接口 */
     property var backend0
     property var backend1
     property var backend2
     property var channel
 
+    /* 当前选择的终端索引 */
     property int currentIndex: 0
 
+    /* 每个终端的串口配置项（初始值） */
     property var configs: [
         { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" },
         { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" },
         { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" }
     ]
 
+    /* 标签页模型（串口名称） */
     ListModel {
         id: terminalModel
         ListElement { name: "MiniPC" }
@@ -29,10 +33,12 @@ Item {
         ListElement { name: "USART2" }
     }
 
+    /* 根据索引获取后端对象 */
     function getBackend(index) {
-        return index === 0 ? backend0 : index === 1 ? backend1 : backend2
+        return index === 0 ? backend0 : index === 1 ? backend1 : backend2;
     }
 
+    /* 深拷贝配置对象 */
     function copyConfig(cfg) {
         return cfg ? {
             baudrate: cfg.baudrate || "115200",
@@ -44,61 +50,62 @@ Item {
             parity: "None",
             stopBits: "1",
             dataBits: "8"
-        }
+        };
     }
 
     Component.onCompleted: {
         Qt.callLater(() => {
             if (!backend0 || !backend1 || !backend2 || !channel) {
-                console.error("One or more backend/channel objects are null")
-                return
+                console.error("One or more backend/channel objects are null");
+                return;
             }
-            console.log("All backends and channel are valid")
 
             for (var i = 0; i < 3; ++i) {
-                var b = getBackend(i)
+                var b = getBackend(i);
                 if (b && b.defaultConfig) {
-                    var cfg = b.defaultConfig()
-                    if (cfg) configs[i] = copyConfig(cfg)
+                    var cfg = b.defaultConfig();
+                    if (cfg) configs[i] = copyConfig(cfg);
                 }
             }
-            configPanel.config = copyConfig(configs[currentIndex])
-        })
+
+            configPanel.config = copyConfig(configs[currentIndex]);
+        });
     }
 
     onCurrentIndexChanged: {
-        configPanel.config = copyConfig(configs[currentIndex])
+        configPanel.config = copyConfig(configs[currentIndex]);
     }
 
+    /* 接收 C++ 发送的剪贴板文本，转发给当前 WebView */
     Connections {
         target: clipboardBridge
         onClipboardTextReady: function(text) {
-            console.log("QML Receive Clipboard:", text);
-            let escaped = text.replace(/\\/g, "\\\\")
-                            .replace(/`/g, "\\`")
-                            .replace(/\$/g, "\\$");
-
-            const currentWebView = terminalStack.itemAt(root.currentIndex);
+            console.log("Received clipboard text: " + text);
+            let currentWebView = terminalStack.itemAt(root.currentIndex);
             if (currentWebView) {
-                currentWebView.runJavaScript(`window.pasteFromClipboard(${JSON.stringify(text)});`)
+                currentWebView.runJavaScript(`window.pasteFromClipboard(${JSON.stringify(text)});`);
             } else {
                 console.error("Cannot find current WebView");
             }
         }
     }
 
+    /* 主布局 */
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 12
         spacing: 10
 
+        /* 顶部标签栏（MiniPC / USART1 / USART2） */
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 48
             color: "#1e1e1e"
+
             RowLayout {
                 anchors.fill: parent
                 spacing: 0
+
                 Repeater {
                     model: terminalModel
                     delegate: Rectangle {
@@ -107,10 +114,12 @@ Item {
                         color: currentIndex === index ? "#2979FF" : "#2c2c2c"
                         border.color: "#444444"
                         border.width: 1
+
                         MouseArea {
                             anchors.fill: parent
                             onClicked: currentIndex = index
                         }
+
                         Text {
                             anchors.centerIn: parent
                             text: model.name
@@ -123,28 +132,31 @@ Item {
             }
         }
 
+        /* 串口配置面板 */
         SerialConfigPanel {
             id: configPanel
             index: currentIndex
             Layout.fillWidth: true
+
             onUserConfigUpdated: function(newConfig) {
                 if (newConfig) {
-                    configs[currentIndex] = copyConfig(newConfig)
-                    let backend = getBackend(currentIndex)
+                    configs[currentIndex] = copyConfig(newConfig);
+                    let backend = getBackend(currentIndex);
                     if (backend) {
                         if (backend.setBaudrate)
-                            backend.setBaudrate(parseInt(newConfig.baudrate))
+                            backend.setBaudrate(parseInt(newConfig.baudrate));
                         if (backend.setParity)
-                            backend.setParity(newConfig.parity)
+                            backend.setParity(newConfig.parity);
                         if (backend.setStopBits)
-                            backend.setStopBits(newConfig.stopBits)
+                            backend.setStopBits(newConfig.stopBits);
                         if (backend.setDataBits)
-                            backend.setDataBits(parseInt(newConfig.dataBits))
+                            backend.setDataBits(parseInt(newConfig.dataBits));
                     }
                 }
             }
         }
 
+        /* WebView 堆叠视图：三个终端页面 */
         StackLayout {
             id: terminalStack
             Layout.fillWidth: true
@@ -157,16 +169,14 @@ Item {
                 webChannel: channel
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: true
-                Component.onCompleted: console.log("Terminal 0 Ready")
                 onContextMenuRequested: function(request) {
-                    console.error("Context menu triggered with:", request.selectedText);
                     request.accepted = true;
                     const selected = request.selectedText;
                     if (selected && selected.length > 0) {
-                        webview1.runJavaScript(`doCopy(${JSON.stringify(request.selectedText)});`);
+                        runJavaScript(`doCopy(${JSON.stringify(selected)});`);
                     } else {
-                        forceActiveFocus(); 
-                        clipboardBridge.requestClipboardText(); 
+                        forceActiveFocus();
+                        clipboardBridge.requestClipboardText();
                     }
                 }
             }
@@ -177,16 +187,14 @@ Item {
                 webChannel: channel
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: true
-                Component.onCompleted: console.log("Terminal 1 Ready")
                 onContextMenuRequested: function(request) {
-                    console.error("Context menu triggered with:", request.selectedText);
                     request.accepted = true;
                     const selected = request.selectedText;
                     if (selected && selected.length > 0) {
-                        webview2.runJavaScript(`doCopy(${JSON.stringify(request.selectedText)});`);
+                        runJavaScript(`doCopy(${JSON.stringify(selected)});`);
                     } else {
-                        forceActiveFocus(); 
-                        clipboardBridge.requestClipboardText(); 
+                        forceActiveFocus();
+                        clipboardBridge.requestClipboardText();
                     }
                 }
             }
@@ -197,21 +205,20 @@ Item {
                 webChannel: channel
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: true
-                Component.onCompleted: console.log("Terminal 2 Ready")
                 onContextMenuRequested: function(request) {
-                    console.error("Context menu triggered with:", request.selectedText);
                     request.accepted = true;
                     const selected = request.selectedText;
                     if (selected && selected.length > 0) {
-                        webview3.runJavaScript(`doCopy(${JSON.stringify(request.selectedText)});`);
+                        runJavaScript(`doCopy(${JSON.stringify(selected)});`);
                     } else {
-                        forceActiveFocus(); 
-                        clipboardBridge.requestClipboardText(); 
+                        forceActiveFocus();
+                        clipboardBridge.requestClipboardText();
                     }
                 }
             }
         }
 
+        /* 底部状态栏指示器 */
         StatusIndicators {
             Layout.fillWidth: true
             Layout.preferredHeight: 24
