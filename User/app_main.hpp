@@ -87,7 +87,7 @@ private:
 
   void initTopicServer() {
     /* 创建 Topic Server 并注册四个 Topic */
-    topicServer_ = new LibXR::Topic::Server(40960);
+    topicServer_ = new LibXR::Topic::Server(0x100000);
     topicServer_->Register(minipc_->topic_);
     topicServer_->Register(usart1_->topic_);
     topicServer_->Register(usart2_->topic_);
@@ -255,18 +255,21 @@ private slots:
 
     LibXR::ReadPort *ports[3] = {&minipc_->read_, &usart1_->read_,
                                  &usart2_->read_};
-    static uint8_t buffer[40960];
+    static uint8_t buffer[4096];
 
     for (int i = 0; i < 3; ++i) {
-      size_t size = ports[i]->Size();
-      if (size > 0) {
-        ports[i]->queue_data_->PopBatch(buffer, size);
-        tcpClientSocket_->write(reinterpret_cast<char *>(buffer),
-                                static_cast<qint64>(size));
-        tcpClientSocket_->flush();
-        XR_LOG_DEBUG("Forwarded %zu bytes to TCP client", size);
+      while (ports[i]->Size() > 0) {
+        size_t size = LibXR::min(ports[i]->Size(), sizeof(buffer));
+        if (size > 0) {
+          ports[i]->queue_data_->PopBatch(buffer, size);
+          tcpClientSocket_->write(reinterpret_cast<char *>(buffer),
+                                  static_cast<qint64>(size));
+          XR_LOG_ERROR("Forwarded %zu bytes to TCP client", size);
+        }
       }
     }
+
+    tcpClientSocket_->flush();
   }
 
   void broadcastUdpMessage() {

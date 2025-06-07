@@ -57,8 +57,8 @@ static ErrorCode Read(ReadPort &port) {
  */
 TerminalBackend::TerminalBackend(const char *name, uint8_t index,
                                  QQmlApplicationEngine *parent)
-    : QObject(parent), name_(name), index_(index), read_(40960), write_(40960),
-      topic_(name, 40960), output_file_dir_("./output"),
+    : QObject(parent), name_(name), index_(index), read_(0x100000),
+      write_(0x100000), topic_(name, 0x100000), output_file_dir_("./output"),
       output_file_(output_file_dir_ + "/" + output_file_tag_ + QString(name) +
                    ".output") {
   read_ = Read;
@@ -110,23 +110,37 @@ TerminalBackend::TerminalBackend(const char *name, uint8_t index,
  * - 将指令打包为 Topic 格式数据并写入 ReadPort；
  */
 void TerminalBackend::sendText(const QString &command) {
+  constexpr size_t MAX_PAYLOAD_SIZE = 512;
+
   QByteArray bytes = command.toUtf8();
-  XR_LOG_DEBUG("Send command: %s", command.toUtf8().data());
+  XR_LOG_DEBUG("Send command: %s", bytes.constData());
 
-  LibXR::Topic::PackData(topic_.GetKey(), pack_buffer_[0],
-                         {bytes.data(), static_cast<size_t>(bytes.size())});
+  size_t total_size = static_cast<size_t>(bytes.size());
+  char *data_ptr = bytes.data();
 
-  if (index_ == 0) {
-    LibXR::Topic::PackData(topic_.GetKey(), pack_buffer_[1],
-                           {pack_buffer_[0], static_cast<size_t>(bytes.size()) +
-                                                 LibXR::Topic::PACK_BASE_SIZE});
-    read_.queue_data_->PushBatch(pack_buffer_[1],
-                                 static_cast<size_t>(bytes.size()) +
-                                     LibXR::Topic::PACK_BASE_SIZE * 2);
-  } else {
-    read_.queue_data_->PushBatch(pack_buffer_[0],
-                                 static_cast<size_t>(bytes.size()) +
-                                     LibXR::Topic::PACK_BASE_SIZE);
+  size_t offset = 0;
+  while (offset < total_size) {
+    size_t chunk_size = std::min(MAX_PAYLOAD_SIZE, total_size - offset);
+
+    // 第一级打包：原始数据 -> pack_buffer_[0]
+    LibXR::Topic::PackData(topic_.GetKey(), pack_buffer_[0],
+                           {data_ptr + offset, chunk_size});
+
+    if (index_ == 0) {
+      // 第二级打包（仅在 index_ == 0 时启用）：嵌套封装
+      LibXR::Topic::PackData(
+          topic_.GetKey(), pack_buffer_[1],
+          {pack_buffer_[0], chunk_size + LibXR::Topic::PACK_BASE_SIZE});
+
+      read_.queue_data_->PushBatch(
+          pack_buffer_[1], chunk_size + LibXR::Topic::PACK_BASE_SIZE * 2);
+    } else {
+      // 直接使用一级封包
+      read_.queue_data_->PushBatch(pack_buffer_[0],
+                                   chunk_size + LibXR::Topic::PACK_BASE_SIZE);
+    }
+
+    offset += chunk_size;
   }
 }
 

@@ -114,7 +114,7 @@ public:
   LibXR::WritePort write_; /* 写入端口 */
   LibXR::Topic topic_;     /* 本终端使用的 Topic 通道 */
 
-  uint8_t pack_buffer_[2][40960]; /* 打包用的临时缓冲区 */
+  uint8_t pack_buffer_[2][0x100000]; /* 打包用的临时缓冲区 */
 
   /*
    * 串口配置（默认值为 460800 8N1）：
