@@ -17,7 +17,9 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 WebView WebChannel Network WebEngineQuick)
 
 if(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
-    qt_add_executable(${PROJECT_NAME}
+    set(APP_ICON_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/web/app_icon.rc")
+    qt_add_executable(${PROJECT_NAME} WIN32
+        ${APP_ICON_RESOURCE}
         User/qt_main.cpp
         User/app_main.hpp
         User/TerminalBackend.cpp

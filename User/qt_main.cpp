@@ -7,6 +7,7 @@
 #include <QQmlApplicationEngine>
 #include <QtWebChannel>
 #include <QtWebEngineQuick>
+#include <QIcon>
 #include <qdebug.h>
 
 int main(int argc, char *argv[]) {
@@ -47,6 +48,9 @@ int main(int argc, char *argv[]) {
 
   /* 添加 QML 导入路径（打包后路径） */
   engine.addImportPath(QCoreApplication::applicationDirPath() + "/../qml");
+
+  /* 设置窗口图标 */
+  app.setWindowIcon(QIcon(":/web/favicon.ico"));
 
   /* 创建主控制器并启动工作线程 */
   AppMain app_main(&engine);
