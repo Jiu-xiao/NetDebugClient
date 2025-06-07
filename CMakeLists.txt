@@ -41,6 +41,7 @@ else()
         User/TerminalBackend.hpp
         User/DeviceManager.hpp
         User/QTTimebase.hpp
+        User/ClipboardBridge.hpp
     )
 endif()
 

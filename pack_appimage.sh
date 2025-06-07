@@ -49,6 +49,9 @@ Icon=netdebug
 Categories=Utility;
 EOF
 
+# 拷贝 .desktop 到 AppDir 根目录
+cp "$APPDIR/usr/share/applications/$DESKTOP_FILE" "$APPDIR/"
+
 # === 6. 解包 linuxdeployqt 并使用 ===
 echo "🛠 解包并运行 linuxdeployqt..."
 ./linuxdeployqt.AppImage --appimage-extract
