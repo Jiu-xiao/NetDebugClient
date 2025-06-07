@@ -20,17 +20,38 @@ Item {
 
     /* 每个终端的串口配置项（初始值） */
     property var configs: [
-        { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" },
-        { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" },
-        { baudrate: "115200", parity: "None", stopBits: "1", dataBits: "8" }
+        {
+            baudrate: "115200",
+            parity: "None",
+            stopBits: "1",
+            dataBits: "8"
+        },
+        {
+            baudrate: "115200",
+            parity: "None",
+            stopBits: "1",
+            dataBits: "8"
+        },
+        {
+            baudrate: "115200",
+            parity: "None",
+            stopBits: "1",
+            dataBits: "8"
+        }
     ]
 
     /* 标签页模型（串口名称） */
     ListModel {
         id: terminalModel
-        ListElement { name: "MiniPC" }
-        ListElement { name: "USART1" }
-        ListElement { name: "USART2" }
+        ListElement {
+            name: "MiniPC"
+        }
+        ListElement {
+            name: "USART1"
+        }
+        ListElement {
+            name: "USART2"
+        }
     }
 
     /* 根据索引获取后端对象 */
@@ -64,11 +85,14 @@ Item {
                 var b = getBackend(i);
                 if (b && b.defaultConfig) {
                     var cfg = b.defaultConfig();
-                    if (cfg) configs[i] = copyConfig(cfg);
+                    console.log("Terminal", i, "default config =", JSON.stringify(cfg));
+                    if (cfg)
+                        configs[i] = copyConfig(cfg);
                 }
             }
 
             configPanel.config = copyConfig(configs[currentIndex]);
+            console.log("MainTerminalView Component.onCompleted:", currentIndex);
         });
     }
 
@@ -79,7 +103,7 @@ Item {
     /* 接收 C++ 发送的剪贴板文本，转发给当前 WebView */
     Connections {
         target: clipboardBridge
-        onClipboardTextReady: function(text) {
+        function onClipboardTextReady(text) {
             console.log("Received clipboard text: " + text);
             let currentWebView = terminalStack.itemAt(root.currentIndex);
             if (currentWebView) {
@@ -138,20 +162,20 @@ Item {
             index: currentIndex
             Layout.fillWidth: true
 
-            onUserConfigUpdated: function(newConfig) {
-                if (newConfig) {
-                    configs[currentIndex] = copyConfig(newConfig);
-                    let backend = getBackend(currentIndex);
-                    if (backend) {
-                        if (backend.setBaudrate)
-                            backend.setBaudrate(parseInt(newConfig.baudrate));
-                        if (backend.setParity)
-                            backend.setParity(newConfig.parity);
-                        if (backend.setStopBits)
-                            backend.setStopBits(newConfig.stopBits);
-                        if (backend.setDataBits)
-                            backend.setDataBits(parseInt(newConfig.dataBits));
-                    }
+            onUserConfigUpdated: function (idx, newConfig) {
+                if (!newConfig.baudrate || !newConfig.parity || !newConfig.stopBits || !newConfig.dataBits)
+                    return;
+                configs[currentIndex] = copyConfig(newConfig);
+                let backend = getBackend(currentIndex);
+                if (backend) {
+                    if (backend.setBaudrate)
+                        backend.setBaudrate(newConfig.baudrate);
+                    if (backend.setParity)
+                        backend.setParity(newConfig.parity);
+                    if (backend.setStopBits)
+                        backend.setStopBits(newConfig.stopBits);
+                    if (backend.setDataBits)
+                        backend.setDataBits(newConfig.dataBits);
                 }
             }
         }
@@ -169,7 +193,7 @@ Item {
                 webChannel: channel
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: true
-                onContextMenuRequested: function(request) {
+                onContextMenuRequested: function (request) {
                     request.accepted = true;
                     const selected = request.selectedText;
                     if (selected && selected.length > 0) {
@@ -187,7 +211,7 @@ Item {
                 webChannel: channel
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: true
-                onContextMenuRequested: function(request) {
+                onContextMenuRequested: function (request) {
                     request.accepted = true;
                     const selected = request.selectedText;
                     if (selected && selected.length > 0) {
@@ -205,7 +229,7 @@ Item {
                 webChannel: channel
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: true
-                onContextMenuRequested: function(request) {
+                onContextMenuRequested: function (request) {
                     request.accepted = true;
                     const selected = request.selectedText;
                     if (selected && selected.length > 0) {

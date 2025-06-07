@@ -128,10 +128,10 @@
                 console.error("❌ Term not ready");
                 return;
             } else {
-                console.error("✅ Copied to QML:", text);
+                console.log("✅ Copied to QML:", text);
             }
             navigator.clipboard.writeText(text).then(() => {
-                console.error("✅ Copied from QML:", text);
+                console.log("✅ Copied from QML:", text);
             }).catch(err => {
                 console.error("❌ Copy failed:", err);
             });
@@ -163,7 +163,7 @@
         window.doCopy = function (text) {
             try {
                 // 仅用于调试
-                console.error("Trying copy:", text);
+                console.log("Trying copy:", text);
                 // 创建一个临时 textarea
                 const textarea = document.createElement("textarea");
                 textarea.value = text;
@@ -171,7 +171,7 @@
                 textarea.select();
 
                 const success = document.execCommand("copy");
-                console.error("execCommand copy success:", success);
+                console.log("execCommand copy success:", success);
                 document.body.removeChild(textarea);
             } catch (e) {
                 console.error("Legacy copy failed:", e);

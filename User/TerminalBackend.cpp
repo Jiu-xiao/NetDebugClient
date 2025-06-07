@@ -7,6 +7,7 @@
 #include "ramfs.hpp"
 
 #include <QDebug>
+#include <QDir>
 #include <QFile>
 #include <QIODevice>
 #include <QQmlApplicationEngine>
@@ -57,17 +58,44 @@ static ErrorCode Read(ReadPort &port) {
 TerminalBackend::TerminalBackend(const char *name, uint8_t index,
                                  QQmlApplicationEngine *parent)
     : QObject(parent), name_(name), index_(index), read_(40960), write_(40960),
-      topic_(name, 40960) {
+      topic_(name, 40960), output_file_dir_("./output"),
+      output_file_(output_file_dir_ + "/" + output_file_tag_ + QString(name) +
+                   ".output") {
   read_ = Read;
   write_ = Write;
+
+  QDir().mkpath(output_file_dir_);
+
+  output_file_.open(QIODevice::WriteOnly | QIODevice::Text);
+
+  output_file_stream_ = new QTextStream(&output_file_);
 
   loadConfigFromFile();
 
   void (*from_tcp_cb_fun)(bool, TerminalBackend *, RawData &) =
       [](bool, TerminalBackend *self, RawData &data) {
         XR_LOG_DEBUG("%s received data: %d", self->name_, data.size_);
-        emit self->receiveText(QString::fromUtf8(
-            reinterpret_cast<char *>(data.addr_), data.size_));
+
+        if (self->save_to_file_) {
+          *self->output_file_stream_
+              << QByteArray(reinterpret_cast<char *>(data.addr_), data.size_);
+          self->output_file_stream_->flush();
+        }
+
+        if (self->hex_output_) {
+          QString hexStr;
+          for (size_t i = 0; i < data.size_; ++i) {
+            self->count_++;
+            hexStr += QString::asprintf(
+                "%02X ", reinterpret_cast<uint8_t *>(data.addr_)[i]);
+            if ((self->count_) % 16 == 0)
+              hexStr += "\r\n";
+          }
+          emit self->receiveText(hexStr);
+        } else {
+          emit self->receiveText(QString::fromUtf8(
+              reinterpret_cast<char *>(data.addr_), data.size_));
+        }
       };
 
   auto callback = Topic::Callback::Create(from_tcp_cb_fun, this);
@@ -106,41 +134,71 @@ void TerminalBackend::sendText(const QString &command) {
  * QML 调用：设置波特率并保存配置；
  */
 Q_INVOKABLE void TerminalBackend::setBaudrate(const QString &baud) {
-  XR_LOG_INFO("Baudrate set to %s", baud.toStdString().c_str());
-  config_.baudrate = baud.toUInt();
-  saveConfigToFile();
+  if (config_.baudrate != baud.toUInt() && index_ != 0) {
+    XR_LOG_INFO("Baudrate set to %s", baud.toStdString().c_str());
+    config_.baudrate = baud.toUInt();
+    saveConfigToFile();
+  }
 }
 
 /*
  * QML 调用：设置校验位并保存配置；
  */
 Q_INVOKABLE void TerminalBackend::setParity(const QString &parity) {
-  XR_LOG_INFO("Parity set to %s", parity.toStdString().c_str());
-  if (parity == "None")
-    config_.parity = UART::Parity::NO_PARITY;
-  else if (parity == "Even")
-    config_.parity = UART::Parity::EVEN;
-  else if (parity == "Odd")
-    config_.parity = UART::Parity::ODD;
-  saveConfigToFile();
+  if (config_.parity != static_cast<UART::Parity>(parity.toUInt()) &&
+      index_ != 0) {
+    XR_LOG_INFO("Parity set to %s", parity.toStdString().c_str());
+    if (parity == "None")
+      config_.parity = UART::Parity::NO_PARITY;
+    else if (parity == "Even")
+      config_.parity = UART::Parity::EVEN;
+    else if (parity == "Odd")
+      config_.parity = UART::Parity::ODD;
+    saveConfigToFile();
+  }
 }
 
 /*
  * QML 调用：设置停止位并保存配置；
  */
 Q_INVOKABLE void TerminalBackend::setStopBits(const QString &stopBits) {
-  XR_LOG_INFO("Stop bits set to %s", stopBits.toStdString().c_str());
-  config_.stop_bits = stopBits.toUInt();
-  saveConfigToFile();
+  if (config_.stop_bits != stopBits.toUInt() && index_ != 0) {
+    XR_LOG_INFO("Stop bits set to %s", stopBits.toStdString().c_str());
+    config_.stop_bits = stopBits.toUInt();
+    saveConfigToFile();
+  }
 }
 
 /*
  * QML 调用：设置数据位并保存配置；
  */
 Q_INVOKABLE void TerminalBackend::setDataBits(const QString &dataBits) {
-  XR_LOG_INFO("Data bits set to %s", dataBits.toStdString().c_str());
-  config_.data_bits = dataBits.toUInt();
-  saveConfigToFile();
+  if (config_.data_bits != dataBits.toUInt() && index_ != 0) {
+    XR_LOG_INFO("Data bits set to %s", dataBits.toStdString().c_str());
+    config_.data_bits = dataBits.toUInt();
+    saveConfigToFile();
+  }
+}
+
+/*
+ * QML 调用：设置十六进制输出并保存配置;
+ */
+void TerminalBackend::setHexOutput(bool enabled) {
+  if (hex_output_ != enabled) {
+    hex_output_ = enabled;
+    XR_LOG_INFO("Hex Output set to %s", enabled ? "true" : "false");
+    emit receiveText("\r\nHex Ouput Mode\r\n");
+  }
+}
+
+/*
+ * QML 调用：设置保存到文件并保存配置;
+ */
+void TerminalBackend::setSaveToFile(bool enabled) {
+  if (save_to_file_ != enabled) {
+    save_to_file_ = enabled;
+    XR_LOG_INFO("Save to File set to %s", enabled ? "true" : "false");
+  }
 }
 
 /*
@@ -154,10 +212,12 @@ Q_INVOKABLE QVariantMap TerminalBackend::defaultConfig() const {
                                                                     : "Odd";
   configMap["stopBits"] = QString::number(config_.stop_bits);
   configMap["dataBits"] = QString::number(config_.data_bits);
+  configMap["hexOutput"] = hex_output_;
+  configMap["saveToFile"] = save_to_file_;
 
-  XR_LOG_INFO("Load current config: Baudrate = %d, Parity = %d, Stop Bits = "
+  XR_LOG_INFO("%d:Load current config: Baudrate = %d, Parity = %d, Stop Bits = "
               "%d, Data Bits = %d",
-              config_.baudrate, static_cast<int>(config_.parity),
+              index_, config_.baudrate, static_cast<int>(config_.parity),
               config_.stop_bits, config_.data_bits);
 
   return configMap;
@@ -167,6 +227,10 @@ Q_INVOKABLE QVariantMap TerminalBackend::defaultConfig() const {
  * 从配置文件加载串口参数（如 uart_config_0.cfg）；
  */
 void TerminalBackend::loadConfigFromFile() {
+  if (index_ == 0) {
+    return;
+  }
+
   QString filename = QString("uart_config_%1.cfg").arg(index_);
   QFile file(filename);
 
@@ -212,6 +276,12 @@ void TerminalBackend::loadConfigFromFile() {
  * 将当前配置保存到文件，并调用 syncConfig 推送命令；
  */
 void TerminalBackend::saveConfigToFile() {
+  if (index_ == 0) {
+    return;
+  }
+
+  emit receiveText("\r\nReloading configuration...\r\n");
+
   syncConfig();
 
   QString filename = QString("uart_config_%1.cfg").arg(index_);
@@ -244,6 +314,10 @@ void TerminalBackend::saveConfigToFile() {
  * 将当前 config_ 封装为命令，推送至 ReadPort 供主控模块处理；
  */
 void TerminalBackend::syncConfig() {
+  if (index_ == 0) {
+    return;
+  }
+
   static uint32_t topic_key = LibXR::Topic::Find("command")->key;
   Command cmd;
   cmd.type = Command::Type::CONFIG_UART;

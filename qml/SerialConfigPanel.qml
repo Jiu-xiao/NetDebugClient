@@ -11,19 +11,59 @@ Frame {
     Material.theme: Material.Dark
     Material.accent: Material.Teal
 
-    // 当前终端索引（0 = MiniPC，禁用配置）
+    // 当前终端索引（0=MiniPC，配置不可编辑）
     property int index: 0
 
-    // 当前配置项（由外部传入并绑定）
-    property var config: {
-        "baudrate": "115200",
-        "parity": "None",
-        "stopBits": "1",
-        "dataBits": "8"
+    property bool updating: false
+
+    // 当前配置
+    property var config: ({})
+
+    onConfigChanged: {
+        updateWidgets();
     }
 
-    // 配置更改信号，供外部同步更新
-    signal userConfigUpdated(var config)
+    property var backend: (index === 0 ? backend0Obj : index === 1 ? backend1Obj : index === 2 ? backend2Obj : null)
+
+    // 所有终端配置模型（应由外部初始化）
+    ListModel {
+        id: configModel
+        ListElement {
+            baudrate: "115200"
+            parity: "None"
+            stopBits: "1"
+            dataBits: "8"
+            hexOutput: false
+            saveToFile: false
+        }
+        ListElement {
+            baudrate: "115200"
+            parity: "None"
+            stopBits: "1"
+            dataBits: "8"
+            hexOutput: false
+            saveToFile: false
+        }
+        ListElement {
+            baudrate: "115200"
+            parity: "None"
+            stopBits: "1"
+            dataBits: "8"
+            hexOutput: false
+            saveToFile: false
+        }
+        ListElement {
+            baudrate: "115200"
+            parity: "None"
+            stopBits: "1"
+            dataBits: "8"
+            hexOutput: false
+            saveToFile: false
+        }
+    }
+
+    // 向 C++ 通知当前终端配置变更
+    signal userConfigUpdated(int index, var config)
 
     padding: 12
     background: Rectangle {
@@ -31,21 +71,49 @@ Frame {
         radius: 8
     }
 
-    // 更新配置项字段值（避免重复触发）
-    function updateConfigField(field, value) {
-        if (config && config[field] !== value) {
-            config[field] = value
-            userConfigUpdated(config)
+    // 切换 index 时载入配置
+    onIndexChanged: {
+        if (index >= 0 && index < configModel.count) {
+            updateWidgets();
         }
     }
 
-    // 当配置变更时更新各 ComboBox 的选项索引
-    onConfigChanged: {
-        if (!config || typeof config !== "object") return
-        baudrateBox.currentIndex = baudrateBox.model.indexOf(config.baudrate)
-        parityBox.currentIndex   = parityBox.model.indexOf(config.parity)
-        stopBitsBox.currentIndex = stopBitsBox.model.indexOf(config.stopBits)
-        dataBitsBox.currentIndex = dataBitsBox.model.indexOf(config.dataBits)
+    function findIndex(model, value) {
+        for (var i = 0; i < model.length; ++i) {
+            if (model[i] === value) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    // 更新控件显示状态
+    function updateWidgets() {
+        if (!config || typeof config !== "object")
+            return;
+        updating = true;
+
+        baudrateBox.currentIndex = findIndex(baudrateBox.model, config.baudrate);
+        parityBox.currentIndex = findIndex(parityBox.model, config.parity);
+        stopBitsBox.currentIndex = findIndex(stopBitsBox.model, config.stopBits);
+        dataBitsBox.currentIndex = findIndex(dataBitsBox.model, config.dataBits);
+
+        hexOutputBox.checked = !!config.hexOutput;
+        saveToFileBox.checked = !!config.saveToFile;
+
+        updating = false;
+    }
+
+    // 更新字段：config + configModel
+    function updateConfigField(field, value) {
+        if (!config || config[field] === value)
+            return;
+        config[field] = value;
+        var obj = {};
+        obj[field] = value;
+        configModel.set(index, obj);
+        if (!updating)
+            userConfigUpdated(index, config);
     }
 
     Flow {
@@ -53,16 +121,25 @@ Frame {
         Layout.fillWidth: true
         width: parent.width
 
-        // Baudrate 配置
+        // Baudrate
         Item {
-            width: 120; height: 40
-            opacity: index !== 0 ? 1.0 : 0.4
-            Behavior on opacity { NumberAnimation { duration: 150 } }
+            width: 120
+            height: 40
+            opacity: index !== 0 ? 1 : 0.4
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 150
+                }
+            }
 
             Column {
                 anchors.fill: parent
                 spacing: 2
-                Label { text: "Baudrate:"; color: "#dddddd"; font.pixelSize: 12 }
+                Label {
+                    text: "Baudrate:"
+                    color: "#dddddd"
+                    font.pixelSize: 12
+                }
                 ComboBox {
                     id: baudrateBox
                     enabled: index !== 0
@@ -70,21 +147,36 @@ Frame {
                     height: 40
                     font.pixelSize: 14
                     model: ["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000"]
-                    onCurrentIndexChanged: updateConfigField("baudrate", model[currentIndex])
+                    onCurrentIndexChanged: {
+                        if (updating)
+                            return;
+                        updateConfigField("baudrate", model[currentIndex]);
+                        if (backend)
+                            backend.setBaudrate(model[currentIndex]);
+                    }
                 }
             }
         }
 
-        // Parity 校验位
+        // Parity
         Item {
-            width: 100; height: 40
-            opacity: index !== 0 ? 1.0 : 0.4
-            Behavior on opacity { NumberAnimation { duration: 150 } }
+            width: 100
+            height: 40
+            opacity: index !== 0 ? 1 : 0.4
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 150
+                }
+            }
 
             Column {
                 anchors.fill: parent
                 spacing: 2
-                Label { text: "Parity:"; color: "#dddddd"; font.pixelSize: 12 }
+                Label {
+                    text: "Parity:"
+                    color: "#dddddd"
+                    font.pixelSize: 12
+                }
                 ComboBox {
                     id: parityBox
                     enabled: index !== 0
@@ -92,21 +184,36 @@ Frame {
                     height: 40
                     font.pixelSize: 14
                     model: ["None", "Even", "Odd"]
-                    onCurrentIndexChanged: updateConfigField("parity", model[currentIndex])
+                    onCurrentIndexChanged: {
+                        if (updating)
+                            return;
+                        updateConfigField("parity", model[currentIndex]);
+                        if (backend)
+                            backend.setParity(model[currentIndex]);
+                    }
                 }
             }
         }
 
-        // StopBits 停止位
+        // StopBits
         Item {
-            width: 70; height: 40
-            opacity: index !== 0 ? 1.0 : 0.4
-            Behavior on opacity { NumberAnimation { duration: 150 } }
+            width: 70
+            height: 40
+            opacity: index !== 0 ? 1 : 0.4
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 150
+                }
+            }
 
             Column {
                 anchors.fill: parent
                 spacing: 2
-                Label { text: "StopBits:"; color: "#dddddd"; font.pixelSize: 12 }
+                Label {
+                    text: "StopBits:"
+                    color: "#dddddd"
+                    font.pixelSize: 12
+                }
                 ComboBox {
                     id: stopBitsBox
                     enabled: index !== 0
@@ -114,21 +221,36 @@ Frame {
                     height: 40
                     font.pixelSize: 14
                     model: ["1", "2"]
-                    onCurrentIndexChanged: updateConfigField("stopBits", model[currentIndex])
+                    onCurrentIndexChanged: {
+                        if (updating)
+                            return;
+                        updateConfigField("stopBits", model[currentIndex]);
+                        if (backend)
+                            backend.setStopBits(model[currentIndex]);
+                    }
                 }
             }
         }
 
-        // DataBits 数据位
+        // DataBits
         Item {
-            width: 70; height: 40
-            opacity: index !== 0 ? 1.0 : 0.4
-            Behavior on opacity { NumberAnimation { duration: 150 } }
+            width: 70
+            height: 40
+            opacity: index !== 0 ? 1 : 0.4
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 150
+                }
+            }
 
             Column {
                 anchors.fill: parent
                 spacing: 2
-                Label { text: "DataBits:"; color: "#dddddd"; font.pixelSize: 12 }
+                Label {
+                    text: "DataBits:"
+                    color: "#dddddd"
+                    font.pixelSize: 12
+                }
                 ComboBox {
                     id: dataBitsBox
                     enabled: index !== 0
@@ -136,21 +258,106 @@ Frame {
                     height: 40
                     font.pixelSize: 14
                     model: ["5", "6", "7", "8"]
-                    onCurrentIndexChanged: updateConfigField("dataBits", model[currentIndex])
+                    onCurrentIndexChanged: {
+                        if (updating)
+                            return;
+                        updateConfigField("dataBits", model[currentIndex]);
+                        if (backend)
+                            backend.setDataBits(model[currentIndex]);
+                    }
                 }
             }
         }
 
-        // MiniPC 专用：重启按钮
+        // Hex Output
         Item {
-            width: 90; height: 40
-            opacity: index === 0 ? 1.0 : 0.4
-            Behavior on opacity { NumberAnimation { duration: 150 } }
+            width: 60
+            height: 40
+            opacity: 1
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 150
+                }
+            }
 
             Column {
                 anchors.fill: parent
                 spacing: 2
-                Label { text: " " }
+                Label {
+                    text: "Hex Output:"
+                    color: "#dddddd"
+                    font.pixelSize: 12
+                }
+                CheckBox {
+                    id: hexOutputBox
+                    width: parent.width
+                    height: 40
+                    font.pixelSize: 14
+                    checked: false
+                    onCheckedChanged: {
+                        if (updating)
+                            return;
+                        updateConfigField("hexOutput", checked);
+                        if (backend)
+                            backend.setHexOutput(checked);
+                    }
+                }
+            }
+        }
+
+        // Save to File
+        Item {
+            width: 60
+            height: 40
+            opacity: 1
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 150
+                }
+            }
+
+            Column {
+                anchors.fill: parent
+                spacing: 2
+                Label {
+                    text: "Save to File:"
+                    color: "#dddddd"
+                    font.pixelSize: 12
+                }
+                CheckBox {
+                    id: saveToFileBox
+                    width: parent.width
+                    height: 40
+                    font.pixelSize: 14
+                    checked: false
+                    onCheckedChanged: {
+                        if (updating)
+                            return;
+                        updateConfigField("saveToFile", checked);
+                        if (backend)
+                            backend.setSaveToFile(checked);
+                    }
+                }
+            }
+        }
+
+        // MiniPC 专用按钮
+        Item {
+            width: 90
+            height: 40
+            opacity: index === 0 ? 1 : 0.4
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 150
+                }
+            }
+
+            Column {
+                anchors.fill: parent
+                spacing: 2
+                Label {
+                    text: " "
+                }
                 Button {
                     text: "Restart"
                     icon.name: "refresh"
@@ -159,11 +366,22 @@ Frame {
                     font.pixelSize: 14
                     enabled: index === 0
                     onClicked: {
-                        console.log("重启MiniPC")
-                        device_manager.RestartMiniPC()
+                        console.log("重启MiniPC");
+                        device_manager.RestartMiniPC();
                     }
                 }
             }
+        }
+    }
+
+    Component.onCompleted: {
+        if (index >= 0 && index < configModel.count) {
+            var defaultCfg = backend ? backend.defaultConfig() : null;
+            if (defaultCfg) {
+                for (var key in defaultCfg)
+                    configModel.setProperty(index, key, defaultCfg[key]);
+            }
+            updateWidgets();
         }
     }
 }

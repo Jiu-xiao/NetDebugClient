@@ -78,7 +78,8 @@ public slots:
   Q_INVOKABLE void setParity(const QString &parity);
   Q_INVOKABLE void setStopBits(const QString &stopBits);
   Q_INVOKABLE void setDataBits(const QString &dataBits);
-
+  Q_INVOKABLE void setHexOutput(bool enabled);
+  Q_INVOKABLE void setSaveToFile(bool enabled);
   /*
    * 获取默认串口配置（用于界面初始化）；
    */
@@ -121,4 +122,14 @@ public:
    */
   LibXR::UART::Configuration config_ = {460800, LibXR::UART::Parity::NO_PARITY,
                                         8, 1};
+
+  bool hex_output_ = false;
+  bool save_to_file_ = false;
+  uint64_t count_ = 0;
+
+  const QString output_file_dir_;
+  const QString output_file_tag_ =
+      QDateTime::currentDateTime().toString("yyyy-MM-dd_HH:mm:ss_");
+  QFile output_file_;
+  QTextStream *output_file_stream_ = NULL;
 };

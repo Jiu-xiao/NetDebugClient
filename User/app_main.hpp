@@ -196,7 +196,7 @@ private:
         LibXR::Topic::PackData(command_topic_.GetKey(), command_buf, cmd);
         tcpClientSocket_->write(reinterpret_cast<char *>(&command_buf),
                                 sizeof(command_buf));
-        XR_LOG_ERROR("Rename");
+        XR_LOG_INFO("Rename");
       }
     });
     pingCheckTimer_->start(100);
